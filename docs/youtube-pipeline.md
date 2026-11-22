@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | `docs/youtube-pipeline.md` | 이 문서 | 1 |
 | `videos/<slug>.yml` | 영상 1편의 메타데이터 + 상태 | 1 (스키마·예시) |
-| `scripts/yt/` (Node 20, ESM) | 검증·토큰 발급 도우미·업로드·공개 스크립트. 의존성은 `yaml` 하나, API는 Node 내장 `fetch`로 직접 호출 | 2~4 |
+| `scripts/yt/` (Node 20 이상, Actions는 Node 24, ESM) | 검증·토큰 발급 도우미·업로드·공개 스크립트. 의존성은 `yaml` 하나, API는 Node 내장 `fetch`로 직접 호출 | 2~4 |
 | `.github/workflows/yt-validate.yml` | PR·push 시 매니페스트 검증 + 단위 테스트 (secrets 불필요) | 2 |
 | `.github/workflows/yt-upload.yml` | 업로드 잡 | 3 |
 | `.github/workflows/yt-publish.yml` | 주간 공개 전환 잡 | 4 |
@@ -95,7 +95,7 @@
 | `PUBLISH_BATCH_SIZE` | `10` | 공개 잡 1회 채널당 최대 공개 편수 |
 | `YT_PUBLISH_ENABLED` | 없음 | `true`일 때만 cron 실행이 실제 공개. 그 외에는 cron도 dry_run (PR 5에서 `true`로 전환) |
 
-- 액세스 토큰은 저장하지 않는다. 실행마다 리프레시 토큰으로 발급하고 즉시 `::add-mask::`로 마스킹한다. API 응답 원문은 로그에 남기지 않는다(공개 레포는 Actions 로그도 공개).
+- 액세스 토큰은 저장하지 않는다. 실행마다 리프레시 토큰으로 발급하고 즉시 `::add-mask::`로 마스킹한다. API 응답 원문은 로그에 남기지 않는다(공개 레포는 Actions 로그도 공개). API 오류는 Google `error.message` 앞 200자만 남기며, 토큰·이메일 등 개인정보와 요청 본문은 기록하지 않는다.
 - secrets는 포크 PR 워크플로우에 전달되지 않는다. 업로드·공개 잡은 `workflow_dispatch`·`schedule`(·PR 5 이후 `push`)에서만 돈다.
 - 선택: secrets를 `youtube` Environment로 옮기고 main 브랜치 제한을 걸 수 있다(현재는 레포 secrets 사용).
 
