@@ -23,14 +23,18 @@ concurrency:
 
 jobs:
   upload:
+    # 매니페스트 기록은 main에만 커밋한다. main 이외 ref에서 시작하면 잡을 건너뛴다.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
         with:
-          node-version: '20'
+          ref: main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: scripts/yt/package-lock.json
 
@@ -66,5 +70,5 @@ jobs:
             exit 0
           fi
           git commit -m 'videos: 업로드 결과 기록 (youtube_id, uploaded_at)'
-          git pull --rebase
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main

@@ -153,7 +153,7 @@
 | 이미 public | `videos.update` 호출 금지, `published_at`만 기록 |
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
 | 로그 | Actions 로그 + Step Summary 표만 |
-| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋(`git pull --rebase` 후 push). main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
+| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
 
