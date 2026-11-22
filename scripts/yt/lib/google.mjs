@@ -37,6 +37,7 @@ export async function apiErrorFromResponse(res, label) {
       reason = e;
     } else if (e) {
       reason = e.errors?.[0]?.reason ?? e.status;
+      // 로그 데이터 정책: 공개 Actions 로그에는 Google API error.message 앞 200자만 남긴다. 토큰·이메일 등 개인정보·요청 본문은 기록하지 않는다.
       detail = e.message ? `: ${String(e.message).slice(0, 200)}` : '';
     }
   } catch {
