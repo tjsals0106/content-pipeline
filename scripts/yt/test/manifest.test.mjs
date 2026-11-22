@@ -71,6 +71,8 @@ test('source는 drive_file_id 또는 drive_file_name 중 하나', () => {
 test('publish_week 형식', () => {
   assert.ok(fields({ ...base(), publish_week: '2026-48' }).includes('publish_week'));
   assert.ok(fields({ ...base(), publish_week: '2026-W54' }).includes('publish_week'));
+  assert.deepEqual(fields({ ...base(), publish_week: '2026-W53' }), []);
+  assert.ok(fields({ ...base(), publish_week: '2027-W53' }).includes('publish_week'));
   const { publish_week, ...rest } = base();
   assert.deepEqual(fields(rest), []);
 });
@@ -94,7 +96,7 @@ test('중복 youtube_id / drive 파일 검출', () => {
   const manifests = listManifestFiles(dir).map(loadManifest);
   assert.deepEqual(manifests.map((m) => m.name), ['a.yml', 'b.yml']);
   const results = validateManifests(manifests);
-  assert.deepEqual(results.get('a.yml'), []);
+  assert.deepEqual(results.get('a.yml').map((e) => e.field), ['drive_file_name']);
   assert.deepEqual(results.get('b.yml').map((e) => e.field), ['drive_file_name']);
 });
 

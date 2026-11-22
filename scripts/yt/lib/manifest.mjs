@@ -56,6 +56,11 @@ function isValidIso(v) {
   return typeof v === 'string' && ISO_RE.test(v) && !Number.isNaN(Date.parse(v));
 }
 
+export function isoWeeksInYear(year) {
+  const p = (y) => (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400)) % 7;
+  return p(year) === 4 || p(year - 1) === 3 ? 53 : 52;
+}
+
 export function tagsLength(tags) {
   return tags.reduce((sum, t) => sum + t.length + (/\s/.test(t) ? 2 : 0), 0) + Math.max(tags.length - 1, 0);
 }
@@ -127,7 +132,7 @@ export function validateManifestData(data, name = '') {
 
   if (!isBlank(data.publish_week)) {
     const m = typeof data.publish_week === 'string' && WEEK_RE.exec(data.publish_week);
-    if (!m || Number(m[2]) < 1 || Number(m[2]) > 53) err('publish_week', 'YYYY-Www 형식이어야 함 (예: 2026-W48)');
+    if (!m || Number(m[2]) < 1 || Number(m[2]) > isoWeeksInYear(Number(m[1]))) err('publish_week', 'YYYY-Www 형식이어야 함 (예: 2026-W48)');
   }
 
   if (!isBlank(data.youtube_id) && !(typeof data.youtube_id === 'string' && YOUTUBE_ID_RE.test(data.youtube_id))) {
@@ -160,8 +165,10 @@ export function validateManifests(manifests) {
     for (const [field, value] of Object.entries(keys)) {
       if (isBlank(value)) continue;
       const other = seen[field].get(value);
-      if (other) errors.push({ field, message: `${other}와 중복` });
-      else seen[field].set(value, m.name);
+      if (other) {
+        errors.push({ field, message: `${other}와 중복` });
+        result.get(other).push({ field, message: `${m.name}와 중복` });
+      } else seen[field].set(value, m.name);
     }
   }
   return result;

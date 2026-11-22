@@ -29,3 +29,9 @@ test('인자로 준 파일만 보고', () => {
 test('빈 디렉터리는 통과', () => {
   assert.equal(run(tmpVideosDir()).status, 0);
 });
+
+test('중복은 어느 파일을 지정해도 보고', () => {
+  const dir = tmpVideosDir({ 'a.yml': VALID, 'b.yml': VALID });
+  assert.equal(run(dir, [path.join(dir, 'a.yml')]).status, 1);
+  assert.equal(run(dir, [path.join(dir, 'b.yml')]).status, 1);
+});
