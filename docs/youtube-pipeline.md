@@ -104,7 +104,7 @@
 1. Google Cloud 프로젝트에서 YouTube Data API v3, Google Drive API 사용 설정.
 2. OAuth 동의 화면 게시 상태를 **프로덕션**으로 둔다("테스트"면 리프레시 토큰이 7일 후 만료).
 3. OAuth 클라이언트(데스크톱 앱) 1개를 공용으로 쓴다 → `YT_CLIENT_ID`, `YT_CLIENT_SECRET`.
-4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, PR 2)로 발급:
+4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, 9장)로 발급:
    - 채널 토큰: `--scope youtube`, 동의 화면에서 해당 **브랜드 채널**을 선택 → `YT_*_REFRESH_TOKEN`
    - 드라이브 토큰: `--scope drive`, eria8215 계정 → `DRIVE_REFRESH_TOKEN`
 5. GitHub → Settings → Secrets and variables → Actions에 등록.
@@ -185,3 +185,15 @@
 | 6 (이번 범위 밖) | 기존 로그 시트 연동 | |
 
 렌더링(v1 PR 7)과 썸네일 API는 범위에서 제외한다.
+
+## 9. 스크립트 사용법
+
+`scripts/yt/` (Node 20 이상). 처음 한 번 `npm ci --prefix scripts/yt`.
+
+| 명령 | 용도 |
+| --- | --- |
+| `node scripts/yt/validate.mjs [파일...]` | 매니페스트 검증. 인자 없으면 `videos/` 전체. 오류는 `파일: 필드: 메시지`로 출력하고 exit 1. 중복 검사는 항상 전체 기준 |
+| `npm test --prefix scripts/yt` | 단위 테스트 (`node:test`) |
+| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰과 등록할 secret 이름을 출력 |
+
+CI `yt-validate.yml`은 `videos/**`, `scripts/yt/**`, `yt-*.yml`이 바뀐 PR과 main push에서 단위 테스트와 검증을 돌린다. secrets를 쓰지 않는다.
