@@ -16,7 +16,9 @@ export function selectDue(manifests, currentWeek) {
 
 export async function runPublish({ env = process.env, fetchImpl = fetch, now = () => new Date() } = {}) {
   const dryRun = env.DRY_RUN !== 'false';
-  const batch = Number.parseInt(env.PUBLISH_BATCH_SIZE || '10', 10);
+  const parsedBatch = Number.parseInt(env.PUBLISH_BATCH_SIZE || '10', 10);
+  const batch = Number.isInteger(parsedBatch) && parsedBatch > 0 ? parsedBatch : 10;
+  if (batch !== parsedBatch) console.warn(`PUBLISH_BATCH_SIZE 값(${env.PUBLISH_BATCH_SIZE})이 올바르지 않아 10으로 처리`);
   const all = listManifestFiles(videosDir(env)).map(loadManifest);
   const results = validateManifests(all);
   const invalid = all.filter((m) => results.get(m.name).length);
@@ -44,8 +46,9 @@ export async function runPublish({ env = process.env, fetchImpl = fetch, now = (
         for (const m of list) row(m, '스킵', `토큰 없음 (${ch.tokenEnv})`);
         continue;
       }
-      const picked = list.slice(0, batch);
-      for (const m of list.slice(batch)) row(m, '이월', `채널당 1회 ${batch}편 상한`);
+      // 배치 상한은 videos.update 시도에만 적용한다. 보류·스킵·이미 public은 상한을 차지하지 않아 뒤 영상을 막지 않는다.
+      const picked = list;
+      let attempts = 0;
 
       let token;
       let statuses;
@@ -80,6 +83,8 @@ export async function runPublish({ env = process.env, fetchImpl = fetch, now = (
           row(m, '스킵', `privacyStatus=${status.privacyStatus} (unlisted만 전환)`);
           continue;
         }
+        if (attempts >= batch) { row(m, '이월', `채널당 1회 ${batch}편 상한`); continue; }
+        attempts += 1;
         if (dryRun) { row(m, '공개 예정 (dry_run)'); continue; }
         try {
           await setPublic(token, m.data.youtube_id, status, { fetchImpl });

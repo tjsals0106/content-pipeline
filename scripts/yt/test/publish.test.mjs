@@ -107,6 +107,23 @@ test('채널당 배치 상한, 오래된 업로드부터', async () => {
   assert.equal(read(dir, 'a.yml').published_at, null);
 });
 
+test('private 영상은 배치 상한을 차지하지 않음', async () => {
+  const dir = tmpVideosDir({
+    'p.yml': uploaded('PPPPPPPPPPP', { uploadedAt: '2026-11-18T00:00:00.000Z' }),
+    'a.yml': uploaded('AAAAAAAAAAA', { uploadedAt: '2026-11-21T00:00:00.000Z' }),
+  });
+  const { fetchImpl } = fake({ PPPPPPPPPPP: { ...unlisted, privacyStatus: 'private' }, AAAAAAAAAAA: unlisted });
+  assert.equal(await runPublish({ env: env(dir, { PUBLISH_BATCH_SIZE: '1' }), fetchImpl, now: () => NOW }), 0);
+  assert.ok(read(dir, 'a.yml').published_at);
+});
+
+test('PUBLISH_BATCH_SIZE가 숫자가 아니면 10으로 처리', async () => {
+  const dir = tmpVideosDir({ 'a.yml': uploaded('AAAAAAAAAAA') });
+  const { fetchImpl } = fake({ AAAAAAAAAAA: unlisted });
+  assert.equal(await runPublish({ env: env(dir, { PUBLISH_BATCH_SIZE: 'abc' }), fetchImpl, now: () => NOW }), 0);
+  assert.ok(read(dir, 'a.yml').published_at);
+});
+
 test('quotaExceeded는 재시도 없이 중단', async () => {
   const dir = tmpVideosDir({ 'a.yml': uploaded('AAAAAAAAAAA'), 'b.yml': uploaded('BBBBBBBBBBB') });
   const quota = () => json(403, { error: { code: 403, message: 'q', errors: [{ reason: 'quotaExceeded' }] } });
