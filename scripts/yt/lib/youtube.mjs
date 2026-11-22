@@ -130,6 +130,7 @@ export async function resumableUpload(token, { body, filePath }, { fetchImpl = f
       }
       if (status.status === 308) offset = nextOffsetFromRange(status);
       else if (status.status === 404 || status.status === 410) throw new ApiError(`업로드 세션 만료 (HTTP ${status.status})`, { status: status.status });
+      else if (!isRetryableStatus(status.status)) throw await apiErrorFromResponse(status, 'videos.insert 상태 조회');
     }
   } finally {
     fs.closeSync(fd);

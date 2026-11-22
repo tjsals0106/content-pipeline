@@ -91,6 +91,34 @@ test('quotaExceeded는 재시도 없이 중단하고 실패 코드', async () =>
   assert.equal(read(dir, 'a.yml').youtube_id, null);
 });
 
+test('토큰이 만료된 채널은 일 상한을 소모하지 않음', async () => {
+  const files = { 'v.yml': VALID.replace('seonmin_mov', 'viriditas_worship').replace('test.mp4', 'v.mp4') };
+  for (let i = 0; i < 10; i++) files[`s${i}.yml`] = VALID.replace('test.mp4', `s${i}.mp4`).replace('테스트 영상', `영상 ${i}`);
+  const dir = tmpVideosDir(files);
+  const { fetchImpl: base } = fakeGoogle();
+  const fetchImpl = async (url, init) => {
+    if (String(url).includes('oauth2') && init.body.get?.('refresh_token') === 'r') return json(400, { error: 'invalid_grant' });
+    return base(url, init);
+  };
+  const code = await runUpload(opts({ ...baseEnv(dir), YT_VIRIDITAS_REFRESH_TOKEN: 'v' }, fetchImpl));
+  assert.equal(code, 1);
+  assert.equal(read(dir, 'v.yml').youtube_id, 'VID1');
+});
+
+test('같은 제목 영상이 이미 다른 매니페스트에 기록돼 있으면 ID를 재사용하지 않음', async () => {
+  const dir = tmpVideosDir({
+    'old.yml': VALID.replace('test.mp4', 'old.mp4').replace('youtube_id: null', 'youtube_id: "OLDOLDOLD01"').replace('uploaded_at: null', 'uploaded_at: "2026-01-01T00:00:00.000Z"'),
+    'new.yml': VALID,
+  });
+  const { fetchImpl: base, calls } = fakeGoogle();
+  const fetchImpl = async (url, init) => (String(url).includes('/playlistItems')
+    ? json(200, { items: [{ snippet: { title: '테스트 영상' }, contentDetails: { videoId: 'OLDOLDOLD01' } }] })
+    : base(url, init));
+  assert.equal(await runUpload(opts(baseEnv(dir), fetchImpl)), 1);
+  assert.equal(read(dir, 'new.yml').youtube_id, null);
+  assert.equal(calls.filter((c) => c.includes('uploadType=resumable')).length, 0);
+});
+
 test('검증 실패 시 업로드하지 않음', async () => {
   const dir = tmpVideosDir({ 'a.yml': VALID.replace('seonmin_mov', 'nope') });
   const { fetchImpl, calls } = fakeGoogle();
@@ -117,6 +145,20 @@ test('resumable 업로드는 5xx 후 같은 세션에서 받은 위치부터 재
   assert.equal(id, 'X');
   assert.equal(log.filter((l) => l.startsWith('init')).length, 1);
   assert.deepEqual(log.slice(1), ['put bytes 0-3/10', 'put bytes 4-7/10', 'put bytes */10', 'put bytes 4-7/10']);
+});
+
+test('청크 재개 중 상태 조회가 quotaExceeded면 즉시 중단', async () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yt-r-')), 'v.mp4');
+  fs.writeFileSync(file, Buffer.alloc(10, 1));
+  let puts = 0;
+  const fetchImpl = async (url, init) => {
+    if (String(url).includes('uploadType')) return new Response(null, { status: 200, headers: { location: 'https://s' } });
+    puts += 1;
+    if (init.headers['Content-Range'] === 'bytes */10') return quota();
+    return new Response('', { status: 503 });
+  };
+  await assert.rejects(resumableUpload('t', { body: {}, filePath: file }, { fetchImpl, sleep: async () => {} }), { name: 'QuotaExceededError' });
+  assert.equal(puts, 2);
 });
 
 test('resumable 업로드도 quotaExceeded는 재시도 없음', async () => {
