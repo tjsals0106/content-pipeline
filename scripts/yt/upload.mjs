@@ -66,17 +66,15 @@ export async function runUpload({
       for (const m of list) setRow(m, '스킵', { note: `토큰 없음 (${CHANNELS[key].tokenEnv})` });
       continue;
     }
+    plan.set(key, list);
     for (const m of list) {
-      if (capacity > 0) {
-        capacity -= 1;
-        if (!plan.has(key)) plan.set(key, []);
-        plan.get(key).push(m);
-        setRow(m, dryRun ? '업로드 예정 (dry_run)' : '대기');
-      } else {
-        setRow(m, '이월', { note: `일 상한 ${limit}편 도달 (PT ${today})` });
-      }
+      if (!dryRun) setRow(m, '대기');
+      else if (capacity > 0) { capacity -= 1; setRow(m, '업로드 예정 (dry_run)'); }
+      else setRow(m, '이월', { note: `일 상한 ${limit}편 도달 (PT ${today})` });
     }
   }
+  const capacityNote = `일 상한 ${limit}편 도달 (PT ${today})`;
+  const trackedIds = new Set(all.map((m) => m.data.youtube_id).filter(Boolean));
 
   let units = 0;
   let failures = 0;
@@ -90,6 +88,10 @@ export async function runUpload({
     try {
       for (const [key, list] of plan) {
         const ch = CHANNELS[key];
+        if (capacity <= 0) {
+          for (const m of list) setRow(m, '이월', { note: capacityNote });
+          continue;
+        }
         let token;
         let channel;
         try {
@@ -116,12 +118,23 @@ export async function runUpload({
               units += 1;
             }
             const dup = recent.find((v) => v.title === m.data.title);
+            if (dup && trackedIds.has(dup.videoId)) {
+              setRow(m, '실패', { note: `같은 제목 영상(${dup.videoId})이 다른 매니페스트에 이미 기록됨. 제목을 바꾸거나 매니페스트 확인` });
+              failures += 1;
+              continue;
+            }
             if (dup) {
+              trackedIds.add(dup.videoId);
               writeManifestFields(m, { youtube_id: dup.videoId, uploaded_at: now().toISOString() });
               setRow(m, '기존 영상 기록', { youtubeId: dup.videoId, note: '채널에 같은 제목 영상이 있어 업로드하지 않음 (확인 필요)' });
               continue;
             }
 
+            if (capacity <= 0) {
+              setRow(m, '이월', { note: capacityNote });
+              continue;
+            }
+            capacity -= 1;
             const dToken = await getDriveToken();
             const file = await resolveDriveFile(dToken, m.data.source, { folderId: env.DRIVE_VIDEO_FOLDER_ID, fetchImpl });
             const warnings = checkDriveFile(file);
@@ -135,6 +148,7 @@ export async function runUpload({
               fetchImpl, sleep, log: (msg) => console.log(`[${ch.name}] ${m.name} ${msg}`),
             });
             units += 1;
+            trackedIds.add(videoId);
             writeManifestFields(m, { youtube_id: videoId, uploaded_at: now().toISOString() });
             console.log(`[${ch.name}] ${m.name} 업로드 완료: ${videoId}`);
             setRow(m, '업로드 (unlisted)', { youtubeId: videoId, kind, note: warnings.join('; ') });
