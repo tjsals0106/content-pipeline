@@ -107,7 +107,7 @@
 4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, 9장)로 발급:
    - 채널 토큰: `--scope youtube`, 동의 화면에서 해당 **브랜드 채널**을 선택 → `YT_*_REFRESH_TOKEN`
    - 드라이브 토큰: `--scope drive`, Drive 소유 계정(A) → `DRIVE_REFRESH_TOKEN`
-5. GitHub → Settings → Secrets and variables → Actions에 등록.
+5. 도우미는 토큰을 화면에 출력하지 않고 권한 0600 파일에만 쓴다. 그 파일로 GitHub Actions secret에 등록(`gh secret set <이름> < 파일` 또는 Settings → Secrets and variables → Actions)한 뒤 파일을 삭제한다.
 
 토큰 무효화(6개월 미사용, 비밀번호 변경, 권한 철회) 시 `invalid_grant`로 실패하므로 같은 절차로 재발급한다. 주간 공개 잡이 매주 토큰을 쓰므로 미사용 만료는 방지된다.
 
@@ -194,6 +194,6 @@
 | --- | --- |
 | `node scripts/yt/validate.mjs [파일...]` | 매니페스트 검증. 인자 없으면 `videos/` 전체. 오류는 `파일: 필드: 메시지`로 출력하고 exit 1. 중복 검사는 항상 전체 기준 |
 | `npm test --prefix scripts/yt` | 단위 테스트 (`node:test`) |
-| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰과 등록할 secret 이름을 출력 |
+| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰을 권한 0600 파일(기본 `~/.yt-tokens/`, `--out`으로 변경)에 쓰고 파일 경로와 등록할 secret 이름만 출력. 토큰 평문은 화면에 출력하지 않음 |
 
 CI `yt-validate.yml`은 `videos/**`, `scripts/yt/**`, `yt-*.yml`이 바뀐 PR과 main push에서 단위 테스트와 검증을 돌린다. secrets를 쓰지 않는다.
