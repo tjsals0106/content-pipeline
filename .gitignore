@@ -1,0 +1,12 @@
+# 영상 파일은 레포에 커밋하지 않는다 (드라이브 '영상' 폴더에서 러너가 내려받음)
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.m4v
+*.webm
+*.mkv
+*.avi
+
+# Node
+node_modules/
