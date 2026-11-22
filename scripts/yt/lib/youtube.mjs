@@ -135,3 +135,36 @@ export async function resumableUpload(token, { body, filePath }, { fetchImpl = f
     fs.closeSync(fd);
   }
 }
+
+// videos.list (1 unit/호출, 최대 50개 ID)
+export async function listVideoStatuses(token, ids, { fetchImpl = fetch } = {}) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 50) {
+    const params = new URLSearchParams({ part: 'status', id: ids.slice(i, i + 50).join(','), maxResults: '50' });
+    const res = await fetchImpl(`${API}/videos?${params}`, { headers: auth(token) });
+    if (!res.ok) throw await apiErrorFromResponse(res, 'videos.list');
+    const json = await res.json();
+    for (const item of json.items ?? []) out.set(item.id, item.status ?? {});
+  }
+  return out;
+}
+
+const WRITABLE_STATUS = ['embeddable', 'license', 'publicStatsViewable', 'selfDeclaredMadeForKids', 'containsSyntheticMedia'];
+
+// part=status 업데이트는 보내지 않은 쓰기 가능 필드를 기본값으로 되돌리므로 현재 값을 그대로 실어 privacyStatus만 바꾼다.
+export function buildPublicStatus(current) {
+  const status = { privacyStatus: 'public' };
+  for (const k of WRITABLE_STATUS) if (current[k] !== undefined) status[k] = current[k];
+  return status;
+}
+
+// videos.update (50 units)
+export async function setPublic(token, videoId, currentStatus, { fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(`${API}/videos?part=status`, {
+    method: 'PUT',
+    headers: { ...auth(token), 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ id: videoId, status: buildPublicStatus(currentStatus) }),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'videos.update');
+  return res.json();
+}
