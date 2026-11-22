@@ -15,7 +15,7 @@
 ## 2. 아키텍처
 
 ```
-[사람] 촬영·편집 → 완성본 MP4 ──▶ 드라이브 '영상' 폴더 (eria8215 소유, lauraeslau3 공유)
+[사람] 촬영·편집 → 완성본 MP4 ──▶ 드라이브 '영상' 폴더 (계정 A 소유, 계정 B 공유)
 [사람] videos/<slug>.yml 커밋 (channel 필드로 채널 구분)
                  │
                  ▼
@@ -62,13 +62,13 @@
 
 ### 3.1 채널
 
-| 채널 키 (`channel`) | 채널 | 소유 Google 계정 | 리프레시 토큰 secret |
+| 채널 키 (`channel`) | 채널 | 소유 Google 계정 (역할 별칭) | 리프레시 토큰 secret |
 | --- | --- | --- | --- |
-| `seonmin_mov` | Seonmin MOV | eria8215@gmail.com | `YT_SEONMINMOV_REFRESH_TOKEN` |
-| `meliv_music` | Meliv Music | lauraeslau3@gmail.com | `YT_MELIV_REFRESH_TOKEN` |
-| `viriditas_worship` | Viriditas Worship | lauraeslau3@gmail.com | `YT_VIRIDITAS_REFRESH_TOKEN` |
+| `seonmin_mov` | Seonmin MOV | Drive 소유 계정 (계정 A) | `YT_SEONMINMOV_REFRESH_TOKEN` |
+| `meliv_music` | Meliv Music | 채널 운영 계정 (계정 B) | `YT_MELIV_REFRESH_TOKEN` |
+| `viriditas_worship` | Viriditas Worship | 채널 운영 계정 (계정 B) | `YT_VIRIDITAS_REFRESH_TOKEN` |
 
-채널 토큰은 브랜드 계정 기반이라 YouTube 스코프(`youtube.upload`, `youtube`)만 가진다. 드라이브 접근은 `DRIVE_REFRESH_TOKEN`(eria8215 계정, `drive.readonly`)으로만 한다.
+채널 토큰은 브랜드 계정 기반이라 YouTube 스코프(`youtube.upload`, `youtube`)만 가진다. 드라이브 접근은 `DRIVE_REFRESH_TOKEN`(Drive 소유 계정 A, `drive.readonly`)으로만 한다.
 
 ### 3.2 Actions secrets (레포 단위)
 
@@ -76,7 +76,7 @@
 | --- | --- | --- |
 | `YT_CLIENT_ID` | 필수 | 공용 OAuth 클라이언트 ID (데스크톱 앱) |
 | `YT_CLIENT_SECRET` | 필수 | 위 클라이언트 secret |
-| `DRIVE_REFRESH_TOKEN` | 필수 | eria8215 계정 토큰, 드라이브 다운로드 전용 |
+| `DRIVE_REFRESH_TOKEN` | 필수 | Drive 소유 계정(A) 토큰, 드라이브 다운로드 전용 |
 | `YT_SEONMINMOV_REFRESH_TOKEN` | 채널별 | Seonmin MOV 채널 토큰 |
 | `YT_MELIV_REFRESH_TOKEN` | 채널별 | Meliv Music 채널 토큰 |
 | `YT_VIRIDITAS_REFRESH_TOKEN` | 채널별 | Viriditas Worship 채널 토큰 |
@@ -106,14 +106,14 @@
 3. OAuth 클라이언트(데스크톱 앱) 1개를 공용으로 쓴다 → `YT_CLIENT_ID`, `YT_CLIENT_SECRET`.
 4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, 9장)로 발급:
    - 채널 토큰: `--scope youtube`, 동의 화면에서 해당 **브랜드 채널**을 선택 → `YT_*_REFRESH_TOKEN`
-   - 드라이브 토큰: `--scope drive`, eria8215 계정 → `DRIVE_REFRESH_TOKEN`
-5. GitHub → Settings → Secrets and variables → Actions에 등록.
+   - 드라이브 토큰: `--scope drive`, Drive 소유 계정(A) → `DRIVE_REFRESH_TOKEN`
+5. 도우미는 토큰을 화면에 출력하지 않고 권한 0600 파일에만 쓴다. 그 파일로 GitHub Actions secret에 등록(`gh secret set <이름> < 파일` 또는 Settings → Secrets and variables → Actions)한 뒤 파일을 삭제한다.
 
 토큰 무효화(6개월 미사용, 비밀번호 변경, 권한 철회) 시 `invalid_grant`로 실패하므로 같은 절차로 재발급한다. 주간 공개 잡이 매주 토큰을 쓰므로 미사용 만료는 방지된다.
 
 ## 4. 영상 소스
 
-- 드라이브 '영상' 폴더 하나(eria8215 드라이브, lauraeslau3에 공유되어 어느 계정에서든 업로드 가능). 모든 채널의 영상이 여기 있고 매니페스트 `channel`로 구분한다.
+- 드라이브 '영상' 폴더 하나(Drive 소유 계정 A의 드라이브, 채널 운영 계정 B에 공유되어 어느 계정에서든 업로드 가능). 모든 채널의 영상이 여기 있고 매니페스트 `channel`로 구분한다.
 - 세로형 1080x1920 MP4, 1편당 30~80MB, 렌더링 없이 완성본만.
 - 매니페스트 `source`에 `drive_file_name`(폴더 안 파일명) 또는 `drive_file_id`를 적는다.
 - 영상 파일은 레포에 커밋하지 않는다(`.gitignore`에 영상 확장자 등록).
@@ -194,6 +194,6 @@
 | --- | --- |
 | `node scripts/yt/validate.mjs [파일...]` | 매니페스트 검증. 인자 없으면 `videos/` 전체. 오류는 `파일: 필드: 메시지`로 출력하고 exit 1. 중복 검사는 항상 전체 기준 |
 | `npm test --prefix scripts/yt` | 단위 테스트 (`node:test`) |
-| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰과 등록할 secret 이름을 출력 |
+| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰을 권한 0600 파일(기본 `~/.yt-tokens/`, `--out`으로 변경)에 쓰고 파일 경로와 등록할 secret 이름만 출력. 토큰 평문은 화면에 출력하지 않음 |
 
 CI `yt-validate.yml`은 `videos/**`, `scripts/yt/**`, `yt-*.yml`이 바뀐 PR과 main push에서 단위 테스트와 검증을 돌린다. secrets를 쓰지 않는다.
