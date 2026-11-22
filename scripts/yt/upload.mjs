@@ -28,6 +28,21 @@ function checkDriveFile(file) {
   return warnings;
 }
 
+export const MAX_DAILY_UPLOADS = 10;
+
+// 비우면 10. 0 이상 정수만 허용하고 10을 넘으면 10으로 제한한다. 그 외 값은 오류.
+export function parseDailyLimit(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return MAX_DAILY_UPLOADS;
+  const text = String(value).trim();
+  if (!/^\d+$/.test(text)) throw new Error(`DAILY_UPLOAD_LIMIT 값(${text})이 올바르지 않음 (0~${MAX_DAILY_UPLOADS} 정수)`);
+  const n = Number(text);
+  if (n > MAX_DAILY_UPLOADS) {
+    console.warn(`DAILY_UPLOAD_LIMIT ${n}은 상한 ${MAX_DAILY_UPLOADS}을 넘어 ${MAX_DAILY_UPLOADS}으로 제한`);
+    return MAX_DAILY_UPLOADS;
+  }
+  return n;
+}
+
 export async function runUpload({
   args = [], env = process.env, fetchImpl = fetch, now = () => new Date(), sleep, probe = probeVideo, tmpDir,
 } = {}) {
@@ -47,9 +62,14 @@ export async function runUpload({
   const selected = (targetsArg.length ? all.filter((m) => targetsArg.includes(m.file)) : all)
     .filter((m) => !m.data.youtube_id);
 
-  const parsedLimit = Number.parseInt(env.DAILY_UPLOAD_LIMIT || '10', 10);
-  const limit = Number.isInteger(parsedLimit) && parsedLimit >= 0 ? parsedLimit : 10;
-  if (limit !== parsedLimit) console.warn(`DAILY_UPLOAD_LIMIT 값(${env.DAILY_UPLOAD_LIMIT})이 올바르지 않아 10으로 처리`);
+  let limit;
+  try {
+    limit = parseDailyLimit(env.DAILY_UPLOAD_LIMIT);
+  } catch (e) {
+    console.error(e.message);
+    writeSummary(`## yt-upload\n\n${e.message}. 업로드하지 않음.`, env);
+    return 1;
+  }
   const today = ptDate(now());
   const usedToday = all.filter((m) => m.data.uploaded_at && ptDate(new Date(m.data.uploaded_at)) === today).length;
   let capacity = Math.max(limit - usedToday, 0);
@@ -76,7 +96,6 @@ export async function runUpload({
     }
   }
   const capacityNote = `일 상한 ${limit}편 도달 (PT ${today})`;
-  const trackedIds = new Set(all.map((m) => m.data.youtube_id).filter(Boolean));
 
   let units = 0;
   let failures = 0;
@@ -120,19 +139,13 @@ export async function runUpload({
               units += 1;
             }
             const dup = recent.find((v) => v.title === m.data.title);
-            if (dup && trackedIds.has(dup.videoId)) {
-              setRow(m, '실패', { note: `같은 제목 영상(${dup.videoId})이 다른 매니페스트에 이미 기록됨. 제목을 바꾸거나 매니페스트 확인` });
+            // 제목 일치만으로는 같은 영상이라 보장할 수 없으므로 ID를 기록하지 않는다 (오연결 → 오공개 방지).
+            // 업로드도 하지 않고 사람 확인을 요구한다. 같은 영상이면 매니페스트에 youtube_id를 직접 기록하면 된다.
+            if (dup) {
+              setRow(m, '확인 필요', { note: `채널에 같은 제목 영상(${dup.videoId})이 있어 업로드 보류. 같은 영상이면 youtube_id를 직접 기록, 아니면 제목 변경` });
               failures += 1;
               continue;
             }
-            if (dup) {
-              capacity -= 1; // uploaded_at이 오늘로 기록되어 다음 실행의 일 상한 집계에 포함되므로 함께 차감
-              trackedIds.add(dup.videoId);
-              writeManifestFields(m, { youtube_id: dup.videoId, uploaded_at: now().toISOString() });
-              setRow(m, '기존 영상 기록', { youtubeId: dup.videoId, note: '채널에 같은 제목 영상이 있어 업로드하지 않음 (확인 필요)' });
-              continue;
-            }
-
             if (capacity <= 0) {
               setRow(m, '이월', { note: capacityNote });
               continue;
@@ -151,7 +164,6 @@ export async function runUpload({
               fetchImpl, sleep, log: (msg) => console.log(`[${ch.name}] ${m.name} ${msg}`),
             });
             units += 1;
-            trackedIds.add(videoId);
             writeManifestFields(m, { youtube_id: videoId, uploaded_at: now().toISOString() });
             console.log(`[${ch.name}] ${m.name} 업로드 완료: ${videoId}`);
             setRow(m, '업로드 (unlisted)', { youtubeId: videoId, kind, note: warnings.join('; ') });
