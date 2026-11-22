@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
-import { runUpload } from '../upload.mjs';
+import { parseDailyLimit, runUpload } from '../upload.mjs';
 import { buildInsertBody, resumableUpload } from '../lib/youtube.mjs';
 import { VALID, tmpVideosDir } from './helpers.mjs';
 
@@ -105,25 +105,46 @@ test('토큰이 만료된 채널은 일 상한을 소모하지 않음', async ()
   assert.equal(read(dir, 'v.yml').youtube_id, 'VID1');
 });
 
-test('같은 제목 영상이 이미 다른 매니페스트에 기록돼 있으면 ID를 재사용하지 않음', async () => {
-  const dir = tmpVideosDir({
-    'old.yml': VALID.replace('test.mp4', 'old.mp4').replace('youtube_id: null', 'youtube_id: "OLDOLDOLD01"').replace('uploaded_at: null', 'uploaded_at: "2026-01-01T00:00:00.000Z"'),
-    'new.yml': VALID,
-  });
+test('같은 제목 영상이 채널에 있으면 ID를 연결하지도 업로드하지도 않음', async () => {
+  const dir = tmpVideosDir({ 'new.yml': VALID });
   const { fetchImpl: base, calls } = fakeGoogle();
   const fetchImpl = async (url, init) => (String(url).includes('/playlistItems')
-    ? json(200, { items: [{ snippet: { title: '테스트 영상' }, contentDetails: { videoId: 'OLDOLDOLD01' } }] })
+    ? json(200, { items: [{ snippet: { title: '테스트 영상' }, contentDetails: { videoId: 'OTHEROTHER1' } }] })
     : base(url, init));
   assert.equal(await runUpload(opts(baseEnv(dir), fetchImpl)), 1);
   assert.equal(read(dir, 'new.yml').youtube_id, null);
+  assert.equal(read(dir, 'new.yml').uploaded_at, null);
   assert.equal(calls.filter((c) => c.includes('uploadType=resumable')).length, 0);
 });
 
-test('DAILY_UPLOAD_LIMIT이 숫자가 아니면 10으로 처리', async () => {
+test('DAILY_UPLOAD_LIMIT 경계값: 비움=10, 0~10 허용, 11 이상은 10으로 제한', () => {
+  assert.equal(parseDailyLimit(undefined), 10);
+  assert.equal(parseDailyLimit(''), 10);
+  assert.equal(parseDailyLimit('0'), 0);
+  assert.equal(parseDailyLimit('1'), 1);
+  assert.equal(parseDailyLimit('10'), 10);
+  assert.equal(parseDailyLimit('11'), 10);
+  assert.equal(parseDailyLimit('100'), 10);
+});
+
+test('DAILY_UPLOAD_LIMIT 잘못된 값은 오류', () => {
+  for (const v of ['abc', '-1', '1.5', '5x', ' 3 4']) assert.throws(() => parseDailyLimit(v), /DAILY_UPLOAD_LIMIT/, v);
+});
+
+test('DAILY_UPLOAD_LIMIT 오류 시 업로드 없이 실패', async () => {
   const dir = tmpVideosDir({ 'a.yml': VALID });
-  const { fetchImpl } = fakeGoogle();
-  assert.equal(await runUpload(opts({ ...baseEnv(dir), DAILY_UPLOAD_LIMIT: 'abc' }, fetchImpl)), 0);
-  assert.equal(read(dir, 'a.yml').youtube_id, 'VID1');
+  const { fetchImpl, calls } = fakeGoogle();
+  assert.equal(await runUpload(opts({ ...baseEnv(dir), DAILY_UPLOAD_LIMIT: 'abc' }, fetchImpl)), 1);
+  assert.equal(calls.length, 0);
+});
+
+test('DAILY_UPLOAD_LIMIT=100이어도 하루 10편까지만', async () => {
+  const files = {};
+  for (let i = 0; i < 11; i++) files[`s${i}.yml`] = VALID.replace('test.mp4', `s${i}.mp4`).replace('테스트 영상', `영상 ${i}`);
+  const dir = tmpVideosDir(files);
+  const { fetchImpl, calls } = fakeGoogle();
+  assert.equal(await runUpload(opts({ ...baseEnv(dir), DAILY_UPLOAD_LIMIT: '100' }, fetchImpl)), 0);
+  assert.equal(calls.filter((c) => c.includes('uploadType=resumable')).length, 10);
 });
 
 test('검증 실패 시 업로드하지 않음', async () => {
