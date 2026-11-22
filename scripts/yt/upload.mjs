@@ -137,7 +137,6 @@ export async function runUpload({
               setRow(m, '이월', { note: capacityNote });
               continue;
             }
-            capacity -= 1;
             const dToken = await getDriveToken();
             const file = await resolveDriveFile(dToken, m.data.source, { folderId: env.DRIVE_VIDEO_FOLDER_ID, fetchImpl });
             const warnings = checkDriveFile(file);
@@ -146,6 +145,7 @@ export async function runUpload({
             const { kind, warnings: probeWarnings } = classifyVideo(probe(localFile));
             warnings.push(...probeWarnings);
 
+            capacity -= 1;
             console.log(`[${ch.name}] ${m.name} 업로드 시작 (${kind})`);
             const videoId = await resumableUpload(token, { body: buildInsertBody(m.data), filePath: localFile }, {
               fetchImpl, sleep, log: (msg) => console.log(`[${ch.name}] ${m.name} ${msg}`),
