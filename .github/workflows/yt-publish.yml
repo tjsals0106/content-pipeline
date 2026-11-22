@@ -22,16 +22,20 @@ concurrency:
 
 jobs:
   publish:
+    # 매니페스트 기록은 main에만 커밋한다. main 이외 ref에서 시작하면 잡을 건너뛴다.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DRY_RUN: ${{ github.event_name == 'schedule' && vars.YT_PUBLISH_ENABLED != 'true' || github.event_name != 'schedule' && inputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
         with:
-          node-version: '20'
+          ref: main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: scripts/yt/package-lock.json
 
@@ -63,5 +67,5 @@ jobs:
             exit 0
           fi
           git commit -m 'videos: 공개 전환 기록 (published_at)'
-          git pull --rebase
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
