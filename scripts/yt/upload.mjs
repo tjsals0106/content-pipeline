@@ -47,7 +47,9 @@ export async function runUpload({
   const selected = (targetsArg.length ? all.filter((m) => targetsArg.includes(m.file)) : all)
     .filter((m) => !m.data.youtube_id);
 
-  const limit = Number.parseInt(env.DAILY_UPLOAD_LIMIT || '10', 10);
+  const parsedLimit = Number.parseInt(env.DAILY_UPLOAD_LIMIT || '10', 10);
+  const limit = Number.isInteger(parsedLimit) && parsedLimit >= 0 ? parsedLimit : 10;
+  if (limit !== parsedLimit) console.warn(`DAILY_UPLOAD_LIMIT 값(${env.DAILY_UPLOAD_LIMIT})이 올바르지 않아 10으로 처리`);
   const today = ptDate(now());
   const usedToday = all.filter((m) => m.data.uploaded_at && ptDate(new Date(m.data.uploaded_at)) === today).length;
   let capacity = Math.max(limit - usedToday, 0);
@@ -124,6 +126,7 @@ export async function runUpload({
               continue;
             }
             if (dup) {
+              capacity -= 1; // uploaded_at이 오늘로 기록되어 다음 실행의 일 상한 집계에 포함되므로 함께 차감
               trackedIds.add(dup.videoId);
               writeManifestFields(m, { youtube_id: dup.videoId, uploaded_at: now().toISOString() });
               setRow(m, '기존 영상 기록', { youtubeId: dup.videoId, note: '채널에 같은 제목 영상이 있어 업로드하지 않음 (확인 필요)' });

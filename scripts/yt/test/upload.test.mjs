@@ -119,6 +119,13 @@ test('같은 제목 영상이 이미 다른 매니페스트에 기록돼 있으�
   assert.equal(calls.filter((c) => c.includes('uploadType=resumable')).length, 0);
 });
 
+test('DAILY_UPLOAD_LIMIT이 숫자가 아니면 10으로 처리', async () => {
+  const dir = tmpVideosDir({ 'a.yml': VALID });
+  const { fetchImpl } = fakeGoogle();
+  assert.equal(await runUpload(opts({ ...baseEnv(dir), DAILY_UPLOAD_LIMIT: 'abc' }, fetchImpl)), 0);
+  assert.equal(read(dir, 'a.yml').youtube_id, 'VID1');
+});
+
 test('검증 실패 시 업로드하지 않음', async () => {
   const dir = tmpVideosDir({ 'a.yml': VALID.replace('seonmin_mov', 'nope') });
   const { fetchImpl, calls } = fakeGoogle();
