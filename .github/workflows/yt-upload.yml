@@ -1,0 +1,74 @@
+name: yt-upload
+
+# 매니페스트(videos/*.yml) 중 youtube_id가 없는 영상을 드라이브에서 받아 채널별 토큰으로 unlisted 업로드한다.
+# 토큰 시크릿이 없는 채널은 스킵된다. 업로드 결과(youtube_id, uploaded_at)는 매니페스트에 커밋된다.
+on:
+  workflow_dispatch:
+    inputs:
+      manifest:
+        description: '특정 매니페스트만 업로드 (예: videos/2026-11-27-morning-routine.yml). 비우면 전체'
+        required: false
+        default: ''
+      dry_run:
+        description: 'true면 업로드 계획만 출력 (API 호출 없음)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yt-manifest
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    # 매니페스트 기록은 main에만 커밋한다. main 이외 ref에서 시작하면 잡을 건너뛴다.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: scripts/yt/package-lock.json
+
+      - run: npm ci
+        working-directory: scripts/yt
+
+      - name: 업로드
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          DRIVE_REFRESH_TOKEN: ${{ secrets.DRIVE_REFRESH_TOKEN }}
+          YT_SEONMINMOV_REFRESH_TOKEN: ${{ secrets.YT_SEONMINMOV_REFRESH_TOKEN }}
+          YT_MELIV_REFRESH_TOKEN: ${{ secrets.YT_MELIV_REFRESH_TOKEN }}
+          YT_VIRIDITAS_REFRESH_TOKEN: ${{ secrets.YT_VIRIDITAS_REFRESH_TOKEN }}
+          DRIVE_VIDEO_FOLDER_ID: ${{ vars.DRIVE_VIDEO_FOLDER_ID }}
+          YT_CHANNEL_ID_SEONMIN_MOV: ${{ vars.YT_CHANNEL_ID_SEONMIN_MOV }}
+          YT_CHANNEL_ID_MELIV_MUSIC: ${{ vars.YT_CHANNEL_ID_MELIV_MUSIC }}
+          YT_CHANNEL_ID_VIRIDITAS_WORSHIP: ${{ vars.YT_CHANNEL_ID_VIRIDITAS_WORSHIP }}
+          DAILY_UPLOAD_LIMIT: ${{ vars.DAILY_UPLOAD_LIMIT }}
+          MANIFEST: ${{ inputs.manifest }}
+        run: node scripts/yt/upload.mjs $MANIFEST
+
+      # 일부 실패·쿼터 초과로 위 단계가 실패해도 이미 업로드된 영상의 youtube_id는 커밋한다 (중복 업로드 방지)
+      - name: 매니페스트 커밋
+        if: ${{ always() && inputs.dry_run != true }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add videos
+          if git diff --cached --quiet; then
+            echo '매니페스트 변경 없음'
+            exit 0
+          fi
+          git commit -m 'videos: 업로드 결과 기록 (youtube_id, uploaded_at)'
+          git pull --rebase origin main
+          git push origin HEAD:main

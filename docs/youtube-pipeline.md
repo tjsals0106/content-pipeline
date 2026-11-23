@@ -52,7 +52,7 @@
 
 멱등성:
 - `youtube_id`가 있는 매니페스트는 업로드하지 않는다.
-- 업로드 직전 채널의 업로드 재생목록을 `playlistItems.list`(최근 50개)로 조회해 제목이 같은 영상이 있으면 업로드하지 않고 그 ID를 기록한다(이전 실행이 업로드 후 커밋 전에 실패한 경우 대비).
+- 업로드 직전 채널의 업로드 재생목록을 `playlistItems.list`(최근 50개)로 조회해 제목이 같은 영상이 있으면 업로드를 보류하고 `확인 필요`로 실패 처리한다. 제목만으로는 같은 영상이라 보장할 수 없으므로 그 ID를 매니페스트에 자동 기록하지 않는다(무관한 영상이 연결돼 공개 전환되는 것 방지). 같은 영상이면 사람이 `youtube_id`를 직접 기록하고, 아니면 제목을 바꾼다.
 - `published_at`이 있으면 공개 잡이 건드리지 않는다. 이미 public인 영상은 `videos.update` 없이 `published_at`만 기록한다.
 - `GITHUB_TOKEN` 커밋은 다른 워크플로우를 트리거하지 않으므로 업로드 → 커밋 → 재업로드 루프가 없다.
 
@@ -91,7 +91,7 @@
 | `YT_CHANNEL_ID_SEONMIN_MOV` | 없음 | 설정 시 토큰의 채널 ID(`channels.list mine=true`)와 다르면 그 채널 실패 (안전장치) |
 | `YT_CHANNEL_ID_MELIV_MUSIC` | 없음 | 위와 같음 |
 | `YT_CHANNEL_ID_VIRIDITAS_WORSHIP` | 없음 | 위와 같음 |
-| `DAILY_UPLOAD_LIMIT` | `10` | 하루(PT 기준) 업로드 방어 상한, 세 채널 합산 |
+| `DAILY_UPLOAD_LIMIT` | `10` | 하루(PT 기준) 업로드 방어 상한, 세 채널 합산. 0~10 정수만 허용(11 이상은 10으로 제한, 그 외 값은 오류) |
 | `PUBLISH_BATCH_SIZE` | `10` | 공개 잡 1회 채널당 최대 공개 편수 |
 | `YT_PUBLISH_ENABLED` | 없음 | `true`일 때만 cron 실행이 실제 공개. 그 외에는 cron도 dry_run (PR 5에서 `true`로 전환) |
 
@@ -153,7 +153,7 @@
 | 이미 public | `videos.update` 호출 금지, `published_at`만 기록 |
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
 | 로그 | Actions 로그 + Step Summary 표만 |
-| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋(`git pull --rebase` 후 push). main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
+| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
 
@@ -165,7 +165,7 @@
 | R6 | 공개 레포 60일 무활동 시 예약 워크플로우 비활성화 | 업로드 기록 커밋이 활동으로 잡힘. 공백기에는 Actions 탭에서 재활성화 (PR 5에서 keepalive 검토) |
 | R7 | cron 지연·누락 | 정시 회피(:17). 공개 시각 오차 수십 분은 허용 |
 | R8 | cron은 UTC | `17 12 * * 5` = 금 21:17 KST 명시 |
-| R9 | 중복 업로드 | `concurrency`(대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사, 청크 재개만 |
+| R9 | 중복 업로드 | `concurrency`(대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사(일치 시 보류·사람 확인), 청크 재개만 |
 | R11 | 처리 실패·거부 영상 공개 | `status.uploadStatus == processed`일 때만 공개 |
 | R12 | 아동용 미선언, 메타데이터 한도 위반 | `made_for_kids` 필수, 제목 100자·설명 5,000바이트·태그 500자 검증 |
 | R13 | 로그에 토큰 노출 | 액세스 토큰 `::add-mask::`, 응답 원문 덤프 금지 |
