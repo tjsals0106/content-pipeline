@@ -24,7 +24,7 @@ test('결과 요약을 JSON으로 POST', async () => {
   const sent = [];
   const env = { LOG_SHEET_WEBHOOK_URL: 'https://example.invalid/exec?key=k', YT_RESULT_FILE: file,
     GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'o/r', GITHUB_RUN_ID: '42', GITHUB_EVENT_NAME: 'push', STEP_OUTCOME: 'success' };
-  const status = await sendLogSheet({ env, fetchImpl: async (url, init) => { sent.push({ url, init }); return { ok: true, status: 200 }; } });
+  const status = await sendLogSheet({ env, fetchImpl: async (url, init) => { sent.push({ url, init }); return { ok: true, status: 200, text: async () => 'ok' }; } });
   assert.equal(status, 'sent');
   assert.equal(sent.length, 1);
   assert.equal(sent[0].init.method, 'POST');
@@ -40,7 +40,7 @@ test('결과 요약을 JSON으로 POST', async () => {
 test('결과 파일이 없어도 실행 정보만 전송', async () => {
   let body;
   const env = { LOG_SHEET_WEBHOOK_URL: 'https://example.invalid/exec', YT_RESULT_FILE: '/nonexistent/x.json', STEP_OUTCOME: 'failure' };
-  await sendLogSheet({ env, fetchImpl: async (_u, init) => { body = JSON.parse(init.body); return { ok: true, status: 200 }; } });
+  await sendLogSheet({ env, fetchImpl: async (_u, init) => { body = JSON.parse(init.body); return { ok: true, status: 200, text: async () => 'ok' }; } });
   assert.equal(body.outcome, 'failure');
   assert.match(body.error, /결과 파일 없음/);
 });
@@ -49,4 +49,5 @@ test('전송 실패는 예외 없이 failed 반환', async () => {
   const env = { LOG_SHEET_WEBHOOK_URL: 'https://example.invalid/exec' };
   assert.equal(await sendLogSheet({ env, fetchImpl: async () => ({ ok: false, status: 500 }) }), 'failed');
   assert.equal(await sendLogSheet({ env, fetchImpl: async () => { throw new TypeError('network'); } }), 'failed');
+  assert.equal(await sendLogSheet({ env, fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<html>로그인</html>' }) }), 'failed');
 });

@@ -44,6 +44,12 @@ export async function sendLogSheet({ env = process.env, fetchImpl = fetch } = {}
       console.warn(`::warning::로그 시트 전송 실패 (HTTP ${res.status})`);
       return 'failed';
     }
+    // 웹앱은 기록 후 'ok'만 응답한다(docs 10.2). 로그인 페이지 등 다른 200 응답은 실패로 본다.
+    const text = (await res.text()).trim();
+    if (text !== 'ok') {
+      console.warn('::warning::로그 시트 전송 실패 (웹앱 응답이 ok가 아님: 배포 접근 권한·URL 확인)');
+      return 'failed';
+    }
     console.log(`로그 시트 전송 완료 (항목 ${payload.items.length}건)`);
     return 'sent';
   } catch (e) {
