@@ -125,8 +125,8 @@ export function validateManifestData(data, name = '') {
     if (hasId && !(typeof src.drive_file_id === 'string' && /^[A-Za-z0-9_-]{10,}$/.test(src.drive_file_id))) {
       err('source.drive_file_id', '드라이브 파일 ID 형식이 아님');
     }
-    if (hasName && !(typeof src.drive_file_name === 'string' && /\.mp4$/i.test(src.drive_file_name) && !/[\\/]/.test(src.drive_file_name))) {
-      err('source.drive_file_name', '경로 없는 .mp4 파일명이어야 함');
+    if (hasName && !(typeof src.drive_file_name === 'string' && /\.(mp4|mov)$/i.test(src.drive_file_name) && !/[\\/]/.test(src.drive_file_name))) {
+      err('source.drive_file_name', '경로 없는 .mp4 또는 .mov 파일명이어야 함');
     }
   }
 

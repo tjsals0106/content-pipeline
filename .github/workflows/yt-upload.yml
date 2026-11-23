@@ -2,7 +2,16 @@ name: yt-upload
 
 # 매니페스트(videos/*.yml) 중 youtube_id가 없는 영상을 드라이브에서 받아 채널별 토큰으로 unlisted 업로드한다.
 # 토큰 시크릿이 없는 채널은 스킵된다. 업로드 결과(youtube_id, uploaded_at)는 매니페스트에 커밋된다.
+# 트리거: main에 매니페스트 push(사람 커밋), 매일 PT 자정 직후 cron(상한·쿼터로 이월된 영상 재시도), 수동 실행.
+# 봇이 GITHUB_TOKEN으로 만든 기록 커밋은 push 트리거를 다시 일으키지 않는다.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'videos/**.yml'
+      - '!videos/_*.yml'
+  schedule:
+    - cron: '23 8 * * *'
   workflow_dispatch:
     inputs:
       manifest:
@@ -17,8 +26,10 @@ on:
 permissions:
   contents: write
 
+# 그룹당 대기 실행은 1개만 남으므로 업로드·공개 그룹을 분리한다(push가 금요일 공개 대기 실행을 취소하지 않도록).
+# 두 워크플로가 기록하는 매니페스트는 겹치지 않고(youtube_id 없음 / 있음), 동시 push로 거부되면 push-manifests.sh가 pull --rebase 후 최대 3회 재시도한다.
 concurrency:
-  group: yt-manifest
+  group: yt-upload
   cancel-in-progress: false
 
 jobs:
@@ -66,14 +77,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add videos
-          if git diff --cached --quiet; then
-            echo '매니페스트 변경 없음'
-            exit 0
-          fi
-          git commit -m 'videos: 업로드 결과 기록 (youtube_id, uploaded_at)'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          bash scripts/yt/push-manifests.sh 'videos: 업로드 결과 기록 (youtube_id, uploaded_at)'
 
       # 로그 시트 연동(선택): LOG_SHEET_WEBHOOK_URL 시크릿이 없으면 건너뛴다. 전송 실패는 경고만
       - name: 로그 시트 전송
@@ -83,3 +87,10 @@ jobs:
           YT_RESULT_FILE: ${{ runner.temp }}/yt-result.json
           STEP_OUTCOME: ${{ steps.upload.outcome }}
         run: node scripts/yt/log-sheet.mjs
+
+  report-failure:
+    needs: upload
+    if: ${{ failure() }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/yt-failure-issue.yml

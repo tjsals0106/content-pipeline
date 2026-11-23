@@ -17,7 +17,7 @@
 | `category_id` | 선택 | 숫자 문자열 | 기본 `"22"` |
 | `default_language` | 선택 | BCP-47 (`ko`, `en`, `ko-KR`) | 기본 `ko`. 오디오 언어에도 사용 |
 | `made_for_kids` | 필수 | boolean | `selfDeclaredMadeForKids` |
-| `source` | 필수 | `{ type: drive, drive_file_id }` 또는 `{ type: drive, drive_file_name }` 중 정확히 하나 | `drive_file_name`은 '영상' 폴더(`DRIVE_VIDEO_FOLDER_ID`) 안 `.mp4` 파일명 |
+| `source` | 필수 | `{ type: drive, drive_file_id }` 또는 `{ type: drive, drive_file_name }` 중 정확히 하나 | `drive_file_name`은 '영상' 폴더(`DRIVE_VIDEO_FOLDER_ID`) 안 `.mp4` 또는 `.mov` 파일명 |
 | `publish_week` | 선택 | `YYYY-Www` (ISO 주차) | 있으면 그 주차(KST) 이후 공개 잡에서 공개, 없으면 업로드 후 첫 공개 잡에서 공개 |
 | `youtube_id` | 기록 | `null` 또는 11자 `[A-Za-z0-9_-]` | 업로드 워크플로우가 기록 |
 | `uploaded_at` | 기록 | `null` 또는 ISO 8601 | 업로드 워크플로우가 기록 |
