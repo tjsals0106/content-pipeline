@@ -156,7 +156,7 @@
 | 실패 알림 | 업로드·공개·keepalive 잡이 실패하면 `yt-failure-issue.yml`이 `[yt] <워크플로> 실패` 이슈를 연다. 같은 제목의 열린 이슈가 있으면 댓글로 실행 링크만 추가. 본문은 실행 링크·이벤트·커밋만 |
 | keepalive | `yt-keepalive.yml`이 매월 1일 03:41 UTC에 예약 워크플로(`yt-upload`, `yt-publish`, `yt-keepalive`) 중 활성(`active`)이거나 무활동으로 잠긴(`disabled_inactivity`) 것에 Actions API(`PUT .../workflows/<파일>/enable`)를 호출해 무활동 타이머를 갱신·재활성화. 사람이 수동으로 끈 워크플로는 건드리지 않는다. 커밋을 만들지 않는다 |
 | 운영 시작 | PR 5 머지 후 업로드 테스트를 마치면 저장소 변수 `YT_PUBLISH_ENABLED=true`로 설정해 금요일 cron 실공개를 켠다 |
-| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
+| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. 업로드·공개는 concurrency 그룹이 달라 동시에 기록할 수 있으므로 `scripts/yt/push-manifests.sh`가 push 거부 시 `pull --rebase` 후 최대 3회 재시도하고, 끝내 실패하거나 rebase가 충돌하면 `::error::`와 Step Summary에 남기고 잡을 실패시킨다(실패 이슈 생성). main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
 

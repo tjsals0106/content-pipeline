@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 # 그룹당 대기 실행은 1개만 남으므로 업로드·공개 그룹을 분리한다(push가 금요일 공개 대기 실행을 취소하지 않도록).
-# 두 워크플로가 기록하는 매니페스트는 겹치지 않고(youtube_id 없음 / 있음), 기록 단계는 pull --rebase 후 push한다.
+# 두 워크플로가 기록하는 매니페스트는 겹치지 않고(youtube_id 없음 / 있음), 동시 push로 거부되면 push-manifests.sh가 pull --rebase 후 최대 3회 재시도한다.
 concurrency:
   group: yt-publish
   cancel-in-progress: false
@@ -64,14 +64,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add videos
-          if git diff --cached --quiet; then
-            echo '매니페스트 변경 없음'
-            exit 0
-          fi
-          git commit -m 'videos: 공개 전환 기록 (published_at)'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          bash scripts/yt/push-manifests.sh 'videos: 공개 전환 기록 (published_at)'
 
   report-failure:
     needs: publish
