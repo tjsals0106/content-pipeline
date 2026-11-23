@@ -133,3 +133,10 @@ test('quotaExceeded는 재시도 없이 중단', async () => {
   assert.equal(read(dir, 'a.yml').published_at, null);
   assert.equal(read(dir, 'b.yml').published_at, null);
 });
+
+test('결과 파일을 쓸 수 없어도 공개 성공 상태(0) 유지', async () => {
+  const dir = tmpVideosDir({ 'a.yml': uploaded('AAAAAAAAAAA') });
+  const { fetchImpl } = fake({ AAAAAAAAAAA: unlisted });
+  assert.equal(await runPublish({ env: env(dir, { YT_RESULT_FILE: '/nonexistent-dir/yt/r.json' }), fetchImpl, now: () => NOW }), 0);
+  assert.ok(read(dir, 'a.yml').published_at);
+});

@@ -51,3 +51,7 @@ test('전송 실패는 예외 없이 failed 반환', async () => {
   assert.equal(await sendLogSheet({ env, fetchImpl: async () => { throw new TypeError('network'); } }), 'failed');
   assert.equal(await sendLogSheet({ env, fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<html>로그인</html>' }) }), 'failed');
 });
+
+test('결과 파일 쓰기 실패는 예외 없이 경고만', () => {
+  assert.doesNotThrow(() => writeResult({ YT_RESULT_FILE: '/nonexistent-dir/yt/r.json' }, { workflow: 'yt-upload', dryRun: false }));
+});
