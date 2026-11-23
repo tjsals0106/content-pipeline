@@ -14,7 +14,7 @@
    title: "영상 제목"                # 1~100자, < > 금지
    description: |
      설명
-   made_for_kids: false            # 필수 선언
+   made_for_kids: false            # 필수 boolean. false는 운영 정책(세 채널 모두 아동용 아님)
    source:
      type: drive
      drive_file_name: "2026-11-27-morning-routine.mp4"   # 또는 drive_file_id (둘 중 하나)
@@ -23,6 +23,7 @@
    uploaded_at: null
    published_at: null
    ```
+   - `made_for_kids`: 검증기는 값이 boolean(`true`/`false`)인지만 검사한다. 세 채널은 아동용 콘텐츠가 아니므로 항상 `false`로 적는 것이 운영 정책이며, 검증기가 `false`를 강제하지는 않는다.
    - `youtube_id`, `uploaded_at`, `published_at`은 워크플로가 채운다. 직접 고치지 않는다(예외는 4장의 수동 복구).
    - 로컬 확인(선택): `npm ci --prefix scripts/yt && node scripts/yt/validate.mjs`
 3. **main에 반영**: 매니페스트를 main에 push하거나 PR로 머지한다. `videos/**.yml`이 바뀐 main push가 `yt-upload`를 바로 실행한다. PR 단계에서는 `yt-validate`가 검증만 한다.
@@ -58,7 +59,16 @@
    | `실패` | 다운로드·API·검증 오류 | 로그의 오류 메시지 확인 후 수정, 재실행 |
 
    로그의 `::warning::`은 잡을 실패시키지 않는 경고다(파일 크기, 해상도, 결과 파일 쓰기 실패, 로그 시트 전송 실패 등).
-3. **매니페스트 기록 실패**: 기록 push가 3회 모두 거부되거나 rebase가 충돌하면 `::error::매니페스트 기록 …`과 Step Summary의 **매니페스트 기록 실패**가 남고 잡이 실패한다. 이때 YouTube 작업은 끝났는데 기록만 빠진 상태다. 다음 실행 전에 Step Summary의 `youtube_id`와 시각을 해당 매니페스트에 직접 기록해 main에 반영한다(그대로 두면 중복 업로드).
+3. **매니페스트 기록 실패**: 기록 단계(`push-manifests.sh`)는 기본 총 3회 push를 시도하고(최초 시도 포함, `PUSH_ATTEMPTS`), 매 시도 전에 `pull --rebase`로 main을 다시 받는다. 모든 시도가 거부되거나 rebase가 충돌하면 `::error::매니페스트 기록 …`과 Step Summary의 **매니페스트 기록 실패**가 남고 잡이 실패한다(실패 이슈 생성). 이때 YouTube 작업은 끝났는데 매니페스트 기록만 누락된 상태이므로, 다음 실행 전에 작업별로 수동 복구한다.
+
+   | 실패한 잡 | 수동 기록할 필드 | 값 | 그대로 두면 |
+   | --- | --- | --- | --- |
+   | `yt-upload` (업로드 성공 후 기록 실패) | `youtube_id`, `uploaded_at` | `youtube_id`는 Step Summary 표, `uploaded_at`은 그 실행 시각 | 다음 실행에서 같은 영상이 중복 업로드됨 |
+   | `yt-publish` (공개 성공 후 기록 실패) | `published_at` | 그 실행 시각 | 다음 공개 잡이 다시 대상으로 잡음(이미 public이면 `published_at`만 기록) |
+
+   - 결과가 `업로드 (unlisted)`·`public 전환`·`이미 public (기록만)`인 행만 복구 대상이다.
+   - 시각은 Actions 실행 화면의 실행 시각을 ISO 8601 UTC로 적는다(예: `uploaded_at: 2026-11-27T08:23:00.000Z`). `uploaded_at`은 일 상한 계산(PT 날짜)에 쓰이므로 날짜를 틀리지 않는다.
+   - main에 반영(push 또는 PR 머지)한 뒤 실패 이슈를 닫는다. 매니페스트 push는 `yt-upload`를 실행시키지만 `youtube_id`가 채워져 있으므로 다시 업로드하지 않는다.
 4. **로그 시트**(선택): `LOG_SHEET_WEBHOOK_URL` secret이 있으면 실행마다 결과 요약이 로그 시트 웹앱으로 전송된다(웹앱이 구현되면 `YT` 탭에 기록). secret이 없으면 로그에 `LOG_SHEET_WEBHOOK_URL 없음: 로그 시트 전송 건너뜀`만 남는다. 전송 실패는 경고뿐이므로 로그 시트에 행이 없어도 원본 판단은 Actions 실행과 이슈로 한다. 웹앱 쪽 설계는 설계 문서 10장.
 
 ## 4. quotaExceeded 대처

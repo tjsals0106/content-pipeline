@@ -24,7 +24,7 @@
    1. 매니페스트 검증 (validate.mjs)
    2. DRIVE_REFRESH_TOKEN으로 영상 다운로드 (러너 임시 디렉터리)
    3. 채널 토큰으로 videos.insert (resumable, privacyStatus=unlisted 명시)
-   4. youtube_id, uploaded_at 기록 → push-manifests.sh로 main에 커밋 (거부 시 재시도 최대 3회)
+   4. youtube_id, uploaded_at 기록 → push-manifests.sh로 main에 커밋 (기본 총 3회 push 시도, 매 시도 전 pull --rebase)
                  │
                  ▼
      YouTube 채널 (unlisted 영상)
@@ -33,7 +33,7 @@
    1. 공개 대상 선정 (youtube_id 있음, published_at 없음, publish_week 도래)
    2. videos.list로 상태 확인 (처리 완료, unlisted, 채널 일치)
    3. videos.update → public (이미 public이면 호출하지 않고 기록만)
-   4. published_at 기록 → push-manifests.sh로 main에 커밋 (거부 시 재시도 최대 3회)
+   4. published_at 기록 → push-manifests.sh로 main에 커밋 (기본 총 3회 push 시도, 매 시도 전 pull --rebase)
 
  실패 시 → yt-failure-issue.yml이 '[yt] <워크플로> 실패' 이슈 생성
  매월 1일 → yt-keepalive.yml이 예약 워크플로 재활성화
@@ -50,7 +50,7 @@
 | `.github/workflows/yt-validate.yml` | PR·push 시 매니페스트 검증 + 단위 테스트 (secrets 불필요) | 2 |
 | `.github/workflows/yt-upload.yml` | 업로드 잡 | 3 |
 | `.github/workflows/yt-publish.yml` | 주간 공개 전환 잡 | 4 |
-| `scripts/yt/push-manifests.sh` | 업로드·공개 잡 공통 매니페스트 기록 커밋·push (거부 시 `pull --rebase` 후 최대 3회 재시도, 최종 실패는 잡 실패) | 5 |
+| `scripts/yt/push-manifests.sh` | 업로드·공개 잡 공통 매니페스트 기록 커밋·push (기본 총 3회 push 시도(최초 포함, `PUSH_ATTEMPTS`), 매 시도 전 `pull --rebase`, 최종 실패는 잡 실패) | 5 |
 | `.github/workflows/yt-failure-issue.yml` | 업로드·공개·keepalive 실패 시 이슈 생성 (재사용 워크플로) | 5 |
 | `.github/workflows/yt-keepalive.yml` | 예약 워크플로 무활동 잠금 방지 (매월) | 5 |
 | `scripts/yt/log-sheet.mjs`, `scripts/yt/lib/result.mjs` | 실행 결과 요약 JSON 작성과 로그 시트 웹앱 POST (선택) | 6 |
@@ -64,7 +64,10 @@
 - `youtube_id`가 있는 매니페스트는 업로드하지 않는다.
 - 업로드 직전 채널의 업로드 재생목록을 `playlistItems.list`(최근 50개)로 조회해 제목이 같은 영상이 있으면 업로드를 보류하고 `확인 필요`로 실패 처리한다. 제목만으로는 같은 영상이라 보장할 수 없으므로 그 ID를 매니페스트에 자동 기록하지 않는다(무관한 영상이 연결돼 공개 전환되는 것 방지). 같은 영상이면 사람이 `youtube_id`를 직접 기록하고, 아니면 제목을 바꾼다.
 - `published_at`이 있으면 공개 잡이 건드리지 않는다. 이미 public인 영상은 `videos.update` 없이 `published_at`만 기록한다.
-- 기록 push가 동시 실행과 경합해 거부돼도 `push-manifests.sh`가 재시도하므로 기록이 유실되지 않는다. 끝내 실패하면 잡이 실패하고 이슈가 열리며, 그 경우 Step Summary의 `youtube_id`를 사람이 매니페스트에 기록해야 한다(중복 업로드 방지).
+- 기록 push가 동시 실행과 경합해 거부되면 `push-manifests.sh`가 다시 시도한다(기본 총 3회 push 시도(최초 포함, `PUSH_ATTEMPTS`), 매 시도 전 `pull --rebase`). 재시도로 경합 대부분은 해소되지만 **모든 시도가 실패하거나 rebase가 충돌하면 YouTube 작업은 끝났는데 매니페스트 기록이 누락될 수 있다.** 이때 잡이 실패하고 `::error::`·Step Summary·실패 이슈가 남으며, 다음 실행 전에 사람이 수동 복구해야 한다.
+  - 업로드 성공 후 기록 실패 → 해당 매니페스트에 `youtube_id`(Step Summary 표)와 `uploaded_at`을 수동 기록. 그대로 두면 다음 실행에서 중복 업로드된다.
+  - 공개 성공 후 기록 실패 → `published_at`을 수동 기록. 그대로 두면 다음 공개 잡이 다시 대상으로 잡는다(이미 public이면 `published_at`만 기록되므로 중복 공개 호출은 없다).
+  - 시각은 해당 실행 시각(Actions 실행 화면)을 ISO 8601 UTC(`2026-11-27T08:23:00.000Z`)로 적는다. 자세한 절차는 [`operations.md`](operations.md) 3장.
 - `GITHUB_TOKEN` 커밋은 다른 워크플로우를 트리거하지 않으므로 업로드 → 커밋 → 재업로드 루프가 없다.
 
 매니페스트 스키마는 [`videos/README.md`](../videos/README.md), 예시는 [`videos/_example.yml`](../videos/_example.yml).
@@ -161,14 +164,14 @@
 | --- | --- |
 | 업로드 | 자동, 항상 `privacyStatus=unlisted` 명시(생략 시 public이 되므로). 트리거는 main에 `videos/*.yml` push(`_` 접두사 예시 제외), 매일 cron `23 8 * * *`(08:23 UTC = **매일 17:23 KST** = PST 00:23, 쿼터 초기화 직후 이월분 재시도), `workflow_dispatch`. 봇의 기록 커밋은 `GITHUB_TOKEN` 커밋이라 push 트리거를 다시 일으키지 않는다 |
 | 공개 전환 | 주 1회 자동. cron `17 12 * * 5` = 금 12:17 UTC = **금 21:17 KST**, 세 채널 동일. 정시를 피해 17분 |
-| 공개 대상 | `youtube_id` 있음 + `published_at` 없음 + (`publish_week` 없음 또는 현재 ISO 주차(KST) 이상), 처리 완료(`processed`)이며 현재 `unlisted`인 영상 |
+| 공개 대상 | `youtube_id` 있음 + `published_at` 없음 + (`publish_week` 없음, 또는 매니페스트의 `publish_week`가 실행 시점의 ISO 주차(KST)와 같거나 이미 지남, 즉 `publish_week ≤ 현재 주차`), 처리 완료(`processed`)이며 현재 `unlisted`인 영상 |
 | 이미 public | `videos.update` 호출 금지, `published_at`만 기록 |
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
 | 로그 | Actions 로그 + Step Summary 표. `LOG_SHEET_WEBHOOK_URL`이 있으면 로그 시트로 요약 POST (10장) |
 | 실패 알림 | 업로드·공개·keepalive 잡이 실패하면 `yt-failure-issue.yml`이 `[yt] <워크플로> 실패` 이슈를 연다. 같은 제목의 열린 이슈가 있으면 댓글로 실행 링크만 추가. 본문은 실행 링크·이벤트·커밋만 |
 | keepalive | `yt-keepalive.yml`이 매월 1일 03:41 UTC에 예약 워크플로(`yt-upload`, `yt-publish`, `yt-keepalive`) 중 활성(`active`)이거나 무활동으로 잠긴(`disabled_inactivity`) 것에 Actions API(`PUT .../workflows/<파일>/enable`)를 호출해 무활동 타이머를 갱신·재활성화. 사람이 수동으로 끈 워크플로는 건드리지 않는다. 커밋을 만들지 않는다 |
 | 운영 시작 | 업로드 테스트를 마치면 저장소 변수 `YT_PUBLISH_ENABLED=true`로 설정해 금요일 cron 실공개를 켠다 |
-| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. 업로드·공개는 concurrency 그룹이 달라 동시에 기록할 수 있으므로 `scripts/yt/push-manifests.sh`가 push 거부 시 `pull --rebase` 후 최대 3회 재시도하고, 끝내 실패하거나 rebase가 충돌하면 `::error::`와 Step Summary에 남기고 잡을 실패시킨다(실패 이슈 생성). main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
+| 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. 업로드·공개는 concurrency 그룹이 달라 동시에 기록할 수 있으므로 `scripts/yt/push-manifests.sh`가 기본 총 3회 push 시도(최초 포함, `PUSH_ATTEMPTS`), 매 시도 전 `pull --rebase` 후 push하고, 끝내 실패하거나 rebase가 충돌하면 `::error::`와 Step Summary에 남기고 잡을 실패시킨다(실패 이슈 생성). 이때 기록이 누락되므로 2.2절의 수동 복구가 필요하다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
 
@@ -182,10 +185,10 @@
 | R8 | cron은 UTC | `17 12 * * 5` = 금 21:17 KST 명시 |
 | R9 | 중복 업로드 | 워크플로별 `concurrency`(`yt-upload`, `yt-publish`; 대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사(일치 시 보류·사람 확인), 청크 재개만 |
 | R11 | 처리 실패·거부 영상 공개 | `status.uploadStatus == processed`일 때만 공개 |
-| R12 | 아동용 미선언, 메타데이터 한도 위반 | `made_for_kids` 필수(이 채널들은 `false`로 선언), 제목 100자·설명 5,000바이트·태그 500자 검증 |
+| R12 | 아동용 미선언, 메타데이터 한도 위반 | 검증기는 `made_for_kids`가 있고 boolean인지만 강제한다. 세 채널은 아동용이 아니므로 `false`로 적는 것은 운영 정책이다(검증기가 `false`를 강제하지는 않음), 제목 100자·설명 5,000바이트·태그 500자 검증 |
 | R13 | 로그에 토큰 노출 | 액세스 토큰 `::add-mask::`, 응답 원문 덤프 금지 |
 | R15 | 쿼터 공유로 한 채널이 풀 소진 | 일 10편 방어 상한, `quotaExceeded` 시 전체 중단·이월(잡 실패 → 이슈 생성, 이미 업로드된 영상의 기록은 커밋) |
-| R16 | 업로드·공개 기록 push 경합으로 기록 유실 | `push-manifests.sh` 재시도 최대 3회, 최종 실패·rebase 충돌은 `::error::` + Step Summary + 잡 실패 |
+| R16 | 업로드·공개 기록 push 경합으로 기록 유실 | `push-manifests.sh`가 기본 총 3회 push 시도(최초 포함, `PUSH_ATTEMPTS`), 매 시도 전 `pull --rebase`. 최종 실패·rebase 충돌은 `::error::` + Step Summary + 잡 실패, 기록 누락분은 수동 복구(2.2절) |
 | R17 | 결과 파일·로그 시트 전송 실패가 본 작업을 실패로 표시 | 결과 파일 쓰기 실패와 웹훅 전송 실패는 경고만 남기고 업로드·공개 결과(종료 코드)를 바꾸지 않음 |
 
 (v1의 R1 "미감사 프로젝트 비공개 잠금"은 2026-11-02 정책 철회로 삭제. 감사 절차 불필요.)
