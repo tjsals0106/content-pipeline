@@ -70,7 +70,7 @@ export async function resumableUpload(token, { body, filePath }, { fetchImpl = f
       ...auth(token),
       'Content-Type': 'application/json; charset=UTF-8',
       'X-Upload-Content-Length': String(total),
-      'X-Upload-Content-Type': 'video/mp4',
+      'X-Upload-Content-Type': /\.mov$/i.test(filePath) ? 'video/quicktime' : 'video/mp4',
     },
     body: JSON.stringify(body),
   });
