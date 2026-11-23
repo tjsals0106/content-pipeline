@@ -1,0 +1,16 @@
+{
+  "name": "content-pipeline-yt",
+  "private": true,
+  "type": "module",
+  "description": "GitHub Actions 기반 유튜브 영상 파이프라인 스크립트",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "validate": "node validate.mjs"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

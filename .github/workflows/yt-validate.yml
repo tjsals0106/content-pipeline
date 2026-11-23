@@ -1,0 +1,40 @@
+name: yt-validate
+
+on:
+  pull_request:
+    paths:
+      - 'videos/**'
+      - 'scripts/yt/**'
+      - '.github/workflows/yt-*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'videos/**'
+      - 'scripts/yt/**'
+      - '.github/workflows/yt-*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: scripts/yt/package-lock.json
+
+      - run: npm ci
+        working-directory: scripts/yt
+
+      - name: 단위 테스트
+        run: npm test
+        working-directory: scripts/yt
+
+      - name: 매니페스트 검증
+        run: node scripts/yt/validate.mjs

@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | `docs/youtube-pipeline.md` | 이 문서 | 1 |
 | `videos/<slug>.yml` | 영상 1편의 메타데이터 + 상태 | 1 (스키마·예시) |
-| `scripts/yt/` (Node 20, ESM) | 검증·토큰 발급 도우미·업로드·공개 스크립트. 의존성은 `yaml` 하나, API는 Node 내장 `fetch`로 직접 호출 | 2~4 |
+| `scripts/yt/` (Node 20 이상, Actions는 Node 24, ESM) | 검증·토큰 발급 도우미·업로드·공개 스크립트. 의존성은 `yaml` 하나, API는 Node 내장 `fetch`로 직접 호출 | 2~4 |
 | `.github/workflows/yt-validate.yml` | PR·push 시 매니페스트 검증 + 단위 테스트 (secrets 불필요) | 2 |
 | `.github/workflows/yt-upload.yml` | 업로드 잡 | 3 |
 | `.github/workflows/yt-publish.yml` | 주간 공개 전환 잡 | 4 |
@@ -95,7 +95,7 @@
 | `PUBLISH_BATCH_SIZE` | `10` | 공개 잡 1회 채널당 최대 공개 편수 |
 | `YT_PUBLISH_ENABLED` | 없음 | `true`일 때만 cron 실행이 실제 공개. 그 외에는 cron도 dry_run (PR 5에서 `true`로 전환) |
 
-- 액세스 토큰은 저장하지 않는다. 실행마다 리프레시 토큰으로 발급하고 즉시 `::add-mask::`로 마스킹한다. API 응답 원문은 로그에 남기지 않는다(공개 레포는 Actions 로그도 공개).
+- 액세스 토큰은 저장하지 않는다. 실행마다 리프레시 토큰으로 발급하고 즉시 `::add-mask::`로 마스킹한다. API 응답 원문은 로그에 남기지 않는다(공개 레포는 Actions 로그도 공개). API 오류는 Google `error.message` 앞 200자만 남기며, 토큰·이메일 등 개인정보와 요청 본문은 기록하지 않는다.
 - secrets는 포크 PR 워크플로우에 전달되지 않는다. 업로드·공개 잡은 `workflow_dispatch`·`schedule`(·PR 5 이후 `push`)에서만 돈다.
 - 선택: secrets를 `youtube` Environment로 옮기고 main 브랜치 제한을 걸 수 있다(현재는 레포 secrets 사용).
 
@@ -104,10 +104,10 @@
 1. Google Cloud 프로젝트에서 YouTube Data API v3, Google Drive API 사용 설정.
 2. OAuth 동의 화면 게시 상태를 **프로덕션**으로 둔다("테스트"면 리프레시 토큰이 7일 후 만료).
 3. OAuth 클라이언트(데스크톱 앱) 1개를 공용으로 쓴다 → `YT_CLIENT_ID`, `YT_CLIENT_SECRET`.
-4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, PR 2)로 발급:
+4. 로컬에서 토큰 발급 도우미(`scripts/yt/get-refresh-token.mjs`, 9장)로 발급:
    - 채널 토큰: `--scope youtube`, 동의 화면에서 해당 **브랜드 채널**을 선택 → `YT_*_REFRESH_TOKEN`
    - 드라이브 토큰: `--scope drive`, Drive 소유 계정(A) → `DRIVE_REFRESH_TOKEN`
-5. GitHub → Settings → Secrets and variables → Actions에 등록.
+5. 도우미는 토큰을 화면에 출력하지 않고 권한 0600 파일에만 쓴다. 그 파일로 GitHub Actions secret에 등록(`gh secret set <이름> < 파일` 또는 Settings → Secrets and variables → Actions)한 뒤 파일을 삭제한다.
 
 토큰 무효화(6개월 미사용, 비밀번호 변경, 권한 철회) 시 `invalid_grant`로 실패하므로 같은 절차로 재발급한다. 주간 공개 잡이 매주 토큰을 쓰므로 미사용 만료는 방지된다.
 
@@ -185,3 +185,15 @@
 | 6 (이번 범위 밖) | 기존 로그 시트 연동 | |
 
 렌더링(v1 PR 7)과 썸네일 API는 범위에서 제외한다.
+
+## 9. 스크립트 사용법
+
+`scripts/yt/` (Node 20 이상). 처음 한 번 `npm ci --prefix scripts/yt`.
+
+| 명령 | 용도 |
+| --- | --- |
+| `node scripts/yt/validate.mjs [파일...]` | 매니페스트 검증. 인자 없으면 `videos/` 전체. 오류는 `파일: 필드: 메시지`로 출력하고 exit 1. 중복 검사는 항상 전체 기준 |
+| `npm test --prefix scripts/yt` | 단위 테스트 (`node:test`) |
+| `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰을 권한 0600 파일(기본 `~/.yt-tokens/`, `--out`으로 변경)에 쓰고 파일 경로와 등록할 secret 이름만 출력. 토큰 평문은 화면에 출력하지 않음 |
+
+CI `yt-validate.yml`은 `videos/**`, `scripts/yt/**`, `yt-*.yml`이 바뀐 PR과 main push에서 단위 테스트와 검증을 돌린다. secrets를 쓰지 않는다.
