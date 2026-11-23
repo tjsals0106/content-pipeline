@@ -154,7 +154,7 @@
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
 | 로그 | Actions 로그 + Step Summary 표만 |
 | 실패 알림 | 업로드·공개·keepalive 잡이 실패하면 `yt-failure-issue.yml`이 `[yt] <워크플로> 실패` 이슈를 연다. 같은 제목의 열린 이슈가 있으면 댓글로 실행 링크만 추가. 본문은 실행 링크·이벤트·커밋만 |
-| keepalive | `yt-keepalive.yml`이 매월 1일 03:41 UTC에 예약 워크플로(`yt-upload`, `yt-publish`, `yt-keepalive`)를 Actions API(`PUT .../workflows/<파일>/enable`)로 재활성화. 커밋을 만들지 않는다 |
+| keepalive | `yt-keepalive.yml`이 매월 1일 03:41 UTC에 예약 워크플로(`yt-upload`, `yt-publish`, `yt-keepalive`) 중 활성(`active`)이거나 무활동으로 잠긴(`disabled_inactivity`) 것에 Actions API(`PUT .../workflows/<파일>/enable`)를 호출해 무활동 타이머를 갱신·재활성화. 사람이 수동으로 끈 워크플로는 건드리지 않는다. 커밋을 만들지 않는다 |
 | 운영 시작 | PR 5 머지 후 업로드 테스트를 마치면 저장소 변수 `YT_PUBLISH_ENABLED=true`로 설정해 금요일 cron 실공개를 켠다 |
 | 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
@@ -168,7 +168,7 @@
 | R6 | 공개 레포 60일 무활동 시 예약 워크플로우 비활성화 | `yt-keepalive.yml`이 매월 예약 워크플로를 재활성화. 그래도 비활성화되면 Actions 탭에서 수동 활성화 |
 | R7 | cron 지연·누락 | 정시 회피(:17). 공개 시각 오차 수십 분은 허용 |
 | R8 | cron은 UTC | `17 12 * * 5` = 금 21:17 KST 명시 |
-| R9 | 중복 업로드 | `concurrency`(대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사(일치 시 보류·사람 확인), 청크 재개만 |
+| R9 | 중복 업로드 | 워크플로별 `concurrency`(`yt-upload`, `yt-publish`; 대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사(일치 시 보류·사람 확인), 청크 재개만 |
 | R11 | 처리 실패·거부 영상 공개 | `status.uploadStatus == processed`일 때만 공개 |
 | R12 | 아동용 미선언, 메타데이터 한도 위반 | `made_for_kids` 필수, 제목 100자·설명 5,000바이트·태그 500자 검증 |
 | R13 | 로그에 토큰 노출 | 액세스 토큰 `::add-mask::`, 응답 원문 덤프 금지 |

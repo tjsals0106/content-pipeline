@@ -21,9 +21,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # 활성(active) 워크플로는 enable 호출로 60일 무활동 타이머를 갱신하고, 무활동으로 잠긴 워크플로는 다시 켠다.
+          # 사람이 수동으로 끈(disabled_manually) 워크플로는 그대로 둔다.
           for wf in yt-upload.yml yt-publish.yml yt-keepalive.yml; do
-            gh api -X PUT "repos/${GH_REPO}/actions/workflows/${wf}/enable"
-            echo "${wf} 활성화 확인"
+            state=$(gh api "repos/${GH_REPO}/actions/workflows/${wf}" --jq .state)
+            if [ "${state}" = "active" ] || [ "${state}" = "disabled_inactivity" ]; then
+              gh api -X PUT "repos/${GH_REPO}/actions/workflows/${wf}/enable"
+              echo "${wf}: ${state} → enable 호출"
+            else
+              echo "${wf}: ${state} (변경 없음)"
+            fi
           done
 
   report-failure:
