@@ -2,7 +2,8 @@ name: yt-publish
 
 # 매주 금요일 21:17 KST(12:17 UTC)에 공개 주차가 된 unlisted 영상을 public으로 전환하고 published_at을 커밋한다.
 # 이미 public인 영상은 videos.update 없이 기록만 한다.
-# cron 실행은 저장소 변수 YT_PUBLISH_ENABLED=true일 때만 실제 전환하고, 그 전에는 dry_run으로 대상만 출력한다(PR 5에서 전환).
+# cron 실행은 저장소 변수 YT_PUBLISH_ENABLED=true일 때만 실제 전환하고, 그 전에는 dry_run으로 대상만 출력한다.
+# 운영 시작은 사용자가 업로드 테스트를 마친 뒤 이 변수를 true로 설정해 켠다.
 on:
   schedule:
     - cron: '17 12 * * 5'
@@ -69,3 +70,10 @@ jobs:
           git commit -m 'videos: 공개 전환 기록 (published_at)'
           git pull --rebase origin main
           git push origin HEAD:main
+
+  report-failure:
+    needs: publish
+    if: ${{ failure() }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/yt-failure-issue.yml

@@ -19,7 +19,7 @@
 [사람] videos/<slug>.yml 커밋 (channel 필드로 채널 구분)
                  │
                  ▼
- yt-upload.yml  (workflow_dispatch → PR 5에서 push 트리거 추가)
+ yt-upload.yml  (main에 videos/*.yml push, 매일 cron '23 8 * * *', workflow_dispatch)
    1. 매니페스트 검증 (validate.mjs)
    2. DRIVE_REFRESH_TOKEN으로 영상 다운로드 (러너 임시 디렉터리)
    3. 채널 토큰으로 videos.insert (resumable, privacyStatus=unlisted 명시)
@@ -96,7 +96,7 @@
 | `YT_PUBLISH_ENABLED` | 없음 | `true`일 때만 cron 실행이 실제 공개. 그 외에는 cron도 dry_run (PR 5에서 `true`로 전환) |
 
 - 액세스 토큰은 저장하지 않는다. 실행마다 리프레시 토큰으로 발급하고 즉시 `::add-mask::`로 마스킹한다. API 응답 원문은 로그에 남기지 않는다(공개 레포는 Actions 로그도 공개). API 오류는 Google `error.message` 앞 200자만 남기며, 토큰·이메일 등 개인정보와 요청 본문은 기록하지 않는다.
-- secrets는 포크 PR 워크플로우에 전달되지 않는다. 업로드·공개 잡은 `workflow_dispatch`·`schedule`(·PR 5 이후 `push`)에서만 돈다.
+- secrets는 포크 PR 워크플로우에 전달되지 않는다. 업로드·공개 잡은 `workflow_dispatch`·`schedule`·main `push`에서만 돈다.
 - 선택: secrets를 `youtube` Environment로 옮기고 main 브랜치 제한을 걸 수 있다(현재는 레포 secrets 사용).
 
 ### 3.4 토큰 발급 절차
@@ -147,12 +147,15 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 업로드 | 자동, 항상 `privacyStatus=unlisted` 명시(생략 시 public이 되므로). PR 3은 `workflow_dispatch`로 시작, PR 5에서 `videos/**` push 트리거 추가 |
+| 업로드 | 자동, 항상 `privacyStatus=unlisted` 명시(생략 시 public이 되므로). 트리거는 main에 `videos/*.yml` push(`_` 접두사 예시 제외), 매일 cron `23 8 * * *`(08:23 UTC = PST 00:23, 쿼터 초기화 직후 이월분 재시도), `workflow_dispatch`. 봇의 기록 커밋은 `GITHUB_TOKEN` 커밋이라 push 트리거를 다시 일으키지 않는다 |
 | 공개 전환 | 주 1회 자동. cron `17 12 * * 5` = 금 12:17 UTC = **금 21:17 KST**, 세 채널 동일. 정시를 피해 17분 |
 | 공개 대상 | `youtube_id` 있음 + `published_at` 없음 + (`publish_week` 없음 또는 현재 ISO 주차(KST) 이상), 처리 완료(`processed`)이며 현재 `unlisted`인 영상 |
 | 이미 public | `videos.update` 호출 금지, `published_at`만 기록 |
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
 | 로그 | Actions 로그 + Step Summary 표만 |
+| 실패 알림 | 업로드·공개·keepalive 잡이 실패하면 `yt-failure-issue.yml`이 `[yt] <워크플로> 실패` 이슈를 연다. 같은 제목의 열린 이슈가 있으면 댓글로 실행 링크만 추가. 본문은 실행 링크·이벤트·커밋만 |
+| keepalive | `yt-keepalive.yml`이 매월 1일 03:41 UTC에 예약 워크플로(`yt-upload`, `yt-publish`, `yt-keepalive`)를 Actions API(`PUT .../workflows/<파일>/enable`)로 재활성화. 커밋을 만들지 않는다 |
+| 운영 시작 | PR 5 머지 후 업로드 테스트를 마치면 저장소 변수 `YT_PUBLISH_ENABLED=true`로 설정해 금요일 cron 실공개를 켠다 |
 | 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
@@ -160,9 +163,9 @@
 | # | 리스크 | 대응 |
 | --- | --- | --- |
 | R2 | 동의 화면 "테스트" 상태면 리프레시 토큰 7일 만료 | 동의 화면 프로덕션 전환 |
-| R3 | 리프레시 토큰 무효화 | `invalid_grant` 시 잡 실패, 3.4 절차로 재발급 |
+| R3 | 리프레시 토큰 무효화 | `invalid_grant` 시 잡 실패 → 실패 이슈 생성, README의 재발급 절차(3.4)로 재발급 |
 | R4 | 영상 파일 git 커밋 (100MB 제한, 유출) | 드라이브 보관, `.gitignore` |
-| R6 | 공개 레포 60일 무활동 시 예약 워크플로우 비활성화 | 업로드 기록 커밋이 활동으로 잡힘. 공백기에는 Actions 탭에서 재활성화 (PR 5에서 keepalive 검토) |
+| R6 | 공개 레포 60일 무활동 시 예약 워크플로우 비활성화 | `yt-keepalive.yml`이 매월 예약 워크플로를 재활성화. 그래도 비활성화되면 Actions 탭에서 수동 활성화 |
 | R7 | cron 지연·누락 | 정시 회피(:17). 공개 시각 오차 수십 분은 허용 |
 | R8 | cron은 UTC | `17 12 * * 5` = 금 21:17 KST 명시 |
 | R9 | 중복 업로드 | `concurrency`(대기, 취소 없음), `youtube_id` 검사, 재생목록 제목 검사(일치 시 보류·사람 확인), 청크 재개만 |
@@ -181,7 +184,7 @@
 | 2 | `scripts/yt/` 골격, OAuth 토큰 발급 도우미, `validate.mjs` + 단위 테스트, 검증 전용 CI(`yt-validate.yml`) | PR에서 검증 CI 통과 |
 | 3 | `upload.mjs` + `yt-upload.yml` (`workflow_dispatch`, unlisted, 드라이브 다운로드, 채널별 토큰) | 테스트 영상 1편 unlisted 업로드, `youtube_id` 커밋 확인 |
 | 4 | `publish.mjs` + `yt-publish.yml` (dispatch 기본 dry_run, cron `17 12 * * 5`, public 전환) | dry_run 대상 선정 확인 후 실제 공개 1편 성공 |
-| 5 (이번 범위 밖) | 운영 전환: 업로드 push 트리거, `YT_PUBLISH_ENABLED=true`, keepalive 검토 | 실제 주간 사이클 1회 완주 |
+| 5 | 운영 전환: 업로드 push·cron 트리거, 실패 시 이슈 자동 생성, keepalive, 토큰 재발급 절차(README). `YT_PUBLISH_ENABLED=true`는 업로드 테스트 후 사용자가 설정 | 실제 주간 사이클 1회 완주 |
 | 6 (이번 범위 밖) | 기존 로그 시트 연동 | |
 
 렌더링(v1 PR 7)과 썸네일 API는 범위에서 제외한다.
