@@ -65,7 +65,12 @@ test('source는 drive_file_id 또는 drive_file_name 중 하나', () => {
   assert.ok(fields({ ...base(), source: { type: 'drive' } }).includes('source'));
   assert.ok(fields({ ...base(), source: { type: 'drive', drive_file_id: '1AbCdEfGhIjKlMn', drive_file_name: 'a.mp4' } }).includes('source'));
   assert.ok(fields({ ...base(), source: { type: 'url', drive_file_name: 'a.mp4' } }).includes('source.type'));
-  assert.ok(fields({ ...base(), source: { type: 'drive', drive_file_name: 'a.mov' } }).includes('source.drive_file_name'));
+  assert.ok(fields({ ...base(), source: { type: 'drive', drive_file_name: 'a.avi' } }).includes('source.drive_file_name'));
+});
+
+test('MOV 파일명 허용과 경로 차단', () => {
+  assert.deepEqual(fields({ ...base(), source: { type: 'drive', drive_file_name: 'a.MOV' } }), []);
+  assert.ok(fields({ ...base(), source: { type: 'drive', drive_file_name: '../a.mov' } }).includes('source.drive_file_name'));
 });
 
 test('publish_week 형식', () => {
