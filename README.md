@@ -107,3 +107,23 @@ v0.4 설치 완료, 1차 실행 테스트 성공. 메모가 채널에 매핑되�
 | `openrouter` | `OPENROUTER_API_KEY` | https://openrouter.ai (모델명에 `:free`가 붙은 것만 무료) |
 
 모델명 예: GitHub Models `openai/gpt-4o-mini`, Groq `llama-3.3-70b-versatile`, OpenRouter는 `:free` 모델 ID. 키는 프로젝트 설정 → **스크립트 속성**에만 저장하고 코드나 GitHub에는 절대 넣지 않습니다.
+
+## 유튜브 영상 파이프라인 (GitHub Actions)
+
+위 Apps Script 파이프라인과 별개로, `videos/` 매니페스트와 GitHub Actions로 세 채널(Seonmin MOV, Meliv Music, Viriditas Worship)에 영상을 unlisted 업로드하고 매주 금요일 21:17 KST에 public으로 전환한다. 설계와 운영은 [docs/youtube-pipeline.md](docs/youtube-pipeline.md) 참고.
+
+### 리프레시 토큰 재발급
+
+업로드·공개 잡이 `invalid_grant`로 실패하면(`[yt] ... 실패` 이슈가 자동으로 열림) 해당 토큰이 무효화된 것이다(6개월 미사용, 비밀번호 변경, 권한 철회, 동의 화면이 "테스트" 상태 등). 다음 절차로 재발급한다.
+
+1. 실패 로그에서 어떤 secret이 실패했는지 확인한다 (채널 토큰 `YT_SEONMINMOV_REFRESH_TOKEN`·`YT_MELIV_REFRESH_TOKEN`·`YT_VIRIDITAS_REFRESH_TOKEN`, 드라이브 토큰 `DRIVE_REFRESH_TOKEN`).
+2. 필요하면 해당 Google 계정의 [타사 앱 액세스](https://myaccount.google.com/connections)에서 이 앱의 권한을 철회한다(새 refresh token이 확실히 발급되도록).
+3. 로컬에서 `npm ci --prefix scripts/yt` 후 도우미를 실행한다. `YT_CLIENT_ID`, `YT_CLIENT_SECRET`은 셸 환경변수로만 넘긴다.
+   - 채널 토큰: `node scripts/yt/get-refresh-token.mjs --scope youtube` → 동의 화면에서 대상 **브랜드 채널**을 선택
+   - 드라이브 토큰: `node scripts/yt/get-refresh-token.mjs --scope drive` → Drive 소유 계정(A)으로 동의
+4. 도우미는 토큰을 화면에 출력하지 않고 권한 0600 파일(기본 `~/.yt-tokens/`)에 쓴 뒤 경로만 알려준다. 그 파일로 secret을 덮어쓰고 바로 지운다.
+   ```sh
+   gh secret set YT_SEONMINMOV_REFRESH_TOKEN < ~/.yt-tokens/<파일> && rm ~/.yt-tokens/<파일>
+   ```
+5. Actions 탭에서 실패한 워크플로를 다시 실행(공개는 `dry_run`으로 먼저 확인)하고, 성공하면 실패 이슈를 닫는다.
+

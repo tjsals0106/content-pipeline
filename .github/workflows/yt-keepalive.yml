@@ -1,0 +1,41 @@
+name: yt-keepalive
+
+# 공개 레포는 60일간 활동이 없으면 예약(schedule) 워크플로가 자동 비활성화된다.
+# 매월 1회 예약 워크플로를 Actions API로 다시 활성화해 잠김을 막는다(레포에 커밋하지 않음).
+on:
+  schedule:
+    - cron: '41 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  keepalive:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 예약 워크플로 재활성화
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # 활성(active) 워크플로는 enable 호출로 60일 무활동 타이머를 갱신하고, 무활동으로 잠긴 워크플로는 다시 켠다.
+          # 사람이 수동으로 끈(disabled_manually) 워크플로는 그대로 둔다.
+          for wf in yt-upload.yml yt-publish.yml yt-keepalive.yml; do
+            state=$(gh api "repos/${GH_REPO}/actions/workflows/${wf}" --jq .state)
+            if [ "${state}" = "active" ] || [ "${state}" = "disabled_inactivity" ]; then
+              gh api -X PUT "repos/${GH_REPO}/actions/workflows/${wf}/enable"
+              echo "${wf}: ${state} → enable 호출"
+            else
+              echo "${wf}: ${state} (변경 없음)"
+            fi
+          done
+
+  report-failure:
+    needs: keepalive
+    if: ${{ failure() }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/yt-failure-issue.yml

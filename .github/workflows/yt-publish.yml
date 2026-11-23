@@ -2,7 +2,8 @@ name: yt-publish
 
 # 매주 금요일 21:17 KST(12:17 UTC)에 공개 주차가 된 unlisted 영상을 public으로 전환하고 published_at을 커밋한다.
 # 이미 public인 영상은 videos.update 없이 기록만 한다.
-# cron 실행은 저장소 변수 YT_PUBLISH_ENABLED=true일 때만 실제 전환하고, 그 전에는 dry_run으로 대상만 출력한다(PR 5에서 전환).
+# cron 실행은 저장소 변수 YT_PUBLISH_ENABLED=true일 때만 실제 전환하고, 그 전에는 dry_run으로 대상만 출력한다.
+# 운영 시작은 사용자가 업로드 테스트를 마친 뒤 이 변수를 true로 설정해 켠다.
 on:
   schedule:
     - cron: '17 12 * * 5'
@@ -16,8 +17,10 @@ on:
 permissions:
   contents: write
 
+# 그룹당 대기 실행은 1개만 남으므로 업로드·공개 그룹을 분리한다(push가 금요일 공개 대기 실행을 취소하지 않도록).
+# 두 워크플로가 기록하는 매니페스트는 겹치지 않고(youtube_id 없음 / 있음), 동시 push로 거부되면 push-manifests.sh가 pull --rebase 후 최대 3회 재시도한다.
 concurrency:
-  group: yt-manifest
+  group: yt-publish
   cancel-in-progress: false
 
 jobs:
@@ -61,11 +64,11 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add videos
-          if git diff --cached --quiet; then
-            echo '매니페스트 변경 없음'
-            exit 0
-          fi
-          git commit -m 'videos: 공개 전환 기록 (published_at)'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          bash scripts/yt/push-manifests.sh 'videos: 공개 전환 기록 (published_at)'
+
+  report-failure:
+    needs: publish
+    if: ${{ failure() }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/yt-failure-issue.yml
