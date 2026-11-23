@@ -10,7 +10,7 @@
 2. 업로드 워크플로우(`yt-upload.yml`)가 드라이브에서 영상을 받아 YouTube Data API v3 `videos.insert`로 **일부 공개(unlisted)** 업로드하고, 매니페스트에 `youtube_id`, `uploaded_at`을 기록한다.
 3. 공개 워크플로우(`yt-publish.yml`)가 **매주 금요일 21:17 KST**에 돌며 공개 대기 영상을 `videos.update`로 **public** 전환하고 `published_at`을 기록한다.
 4. 대상 채널은 3개(Seonmin MOV, Meliv Music, Viriditas Worship). 채널별 리프레시 토큰이 등록된 채널만 동작하고, 토큰이 없는 채널은 스킵하고 로그에 남긴다.
-5. 렌더링·썸네일·로그 시트 연동은 범위 밖이다. 로그는 GitHub Actions 로그와 Step Summary만 쓴다.
+5. 렌더링·썸네일은 범위 밖이다. 로그는 GitHub Actions 로그와 Step Summary가 기본이고, `LOG_SHEET_WEBHOOK_URL` 시크릿이 있으면 실행 결과 요약을 기존 로그 시트 웹앱으로도 보낸다(10장).
 
 ## 2. 아키텍처
 
@@ -80,6 +80,7 @@
 | `YT_SEONMINMOV_REFRESH_TOKEN` | 채널별 | Seonmin MOV 채널 토큰 |
 | `YT_MELIV_REFRESH_TOKEN` | 채널별 | Meliv Music 채널 토큰 |
 | `YT_VIRIDITAS_REFRESH_TOKEN` | 채널별 | Viriditas Worship 채널 토큰 |
+| `LOG_SHEET_WEBHOOK_URL` | 선택 | 로그 시트 웹앱(Apps Script) 엔드포인트 URL. 없으면 전송 단계를 건너뛴다 (10장) |
 
 채널 토큰이 비어 있으면 그 채널은 실패가 아니라 **스킵**하고 로그·Step Summary에 "토큰 없음"으로 남긴다. 토큰을 등록하면 다음 실행부터 자동으로 그 채널이 켜진다.
 
@@ -152,7 +153,7 @@
 | 공개 대상 | `youtube_id` 있음 + `published_at` 없음 + (`publish_week` 없음 또는 현재 ISO 주차(KST) 이상), 처리 완료(`processed`)이며 현재 `unlisted`인 영상 |
 | 이미 public | `videos.update` 호출 금지, `published_at`만 기록 |
 | private 영상 | 사람이 의도적으로 바꾼 것으로 보고 스킵 + 경고 |
-| 로그 | Actions 로그 + Step Summary 표만 |
+| 로그 | Actions 로그 + Step Summary 표. `LOG_SHEET_WEBHOOK_URL`이 있으면 로그 시트로 요약 POST (10장) |
 | 기록 커밋 | `github-actions[bot]`이 main에 `videos/` 변경만 커밋. 업로드·공개 잡은 `github.ref == 'refs/heads/main'`일 때만 실행되고 `ref: main`으로 체크아웃해 `git push origin HEAD:main`으로만 기록한다. main 브랜치 보호 규칙이 bot push를 막으면 기록 단계가 실패하므로 보호 규칙 설정 시 예외가 필요 |
 
 ## 7. 리스크와 대응
@@ -182,7 +183,7 @@
 | 3 | `upload.mjs` + `yt-upload.yml` (`workflow_dispatch`, unlisted, 드라이브 다운로드, 채널별 토큰) | 테스트 영상 1편 unlisted 업로드, `youtube_id` 커밋 확인 |
 | 4 | `publish.mjs` + `yt-publish.yml` (dispatch 기본 dry_run, cron `17 12 * * 5`, public 전환) | dry_run 대상 선정 확인 후 실제 공개 1편 성공 |
 | 5 (이번 범위 밖) | 운영 전환: 업로드 push 트리거, `YT_PUBLISH_ENABLED=true`, keepalive 검토 | 실제 주간 사이클 1회 완주 |
-| 6 (이번 범위 밖) | 기존 로그 시트 연동 | |
+| 6 | 로그 시트 연동(선택): 업로드·공개 결과 요약을 `LOG_SHEET_WEBHOOK_URL`로 POST. Actions 쪽만 구현, 웹앱은 10장 설계만 | 시크릿 없이 건너뜀 확인, 웹앱 배포 후 1행 기록 확인 |
 
 렌더링(v1 PR 7)과 썸네일 API는 범위에서 제외한다.
 
@@ -197,3 +198,51 @@
 | `YT_CLIENT_ID=… YT_CLIENT_SECRET=… node scripts/yt/get-refresh-token.mjs --scope youtube\|drive` | 리프레시 토큰 발급 (3.4). 로컬 루프백(127.0.0.1)으로 동의 결과를 받아 토큰을 권한 0600 파일(기본 `~/.yt-tokens/`, `--out`으로 변경)에 쓰고 파일 경로와 등록할 secret 이름만 출력. 토큰 평문은 화면에 출력하지 않음 |
 
 CI `yt-validate.yml`은 `videos/**`, `scripts/yt/**`, `yt-*.yml`이 바뀐 PR과 main push에서 단위 테스트와 검증을 돌린다. secrets를 쓰지 않는다.
+
+## 10. 로그 시트 연동 (PR 6)
+
+기존 콘텐츠 파이프라인(Apps Script, 학교 계정)의 로그 시트에 이 파이프라인의 실행 결과를 한 줄씩 남긴다. 이 레포는 **GitHub Actions 쪽 전송만** 구현한다. 학교 계정 저장소와 Apps Script 코드는 이 레포에서 건드리지 않는다.
+
+### 10.1 Actions 쪽 (구현됨)
+
+- `upload.mjs`·`publish.mjs`가 Step Summary와 같은 내용을 `YT_RESULT_FILE`(`$RUNNER_TEMP/yt-result.json`)에 JSON으로 남긴다.
+- 두 워크플로의 마지막 단계 `로그 시트 전송`(`if: always()`)이 `scripts/yt/log-sheet.mjs`를 실행해 결과를 `LOG_SHEET_WEBHOOK_URL`로 `POST`(JSON)한다.
+- 시크릿이 없으면 `LOG_SHEET_WEBHOOK_URL 없음: 로그 시트 전송 건너뜀`만 로그에 남기고 성공으로 끝난다.
+- 전송이 실패해도(HTTP 오류, 네트워크, 15초 시간 초과) 경고만 남기고 워크플로를 실패시키지 않는다. 재시도하지 않는다.
+- URL은 로그에 출력하지 않는다(시크릿이라 Actions가 마스킹도 한다). dry_run 실행도 `dry_run: true`로 보낸다.
+
+페이로드 예시:
+
+```json
+{
+  "source": "content-pipeline-yt",
+  "workflow": "yt-upload",
+  "run_id": "123",
+  "run_url": "https://github.com/tjsals0106/content-pipeline/actions/runs/123",
+  "event": "push",
+  "outcome": "success",
+  "sent_at": "2026-11-27T08:23:40.000Z",
+  "dry_run": false,
+  "error": null,
+  "counts": { "업로드 (unlisted)": 1, "스킵": 1 },
+  "items": [
+    { "channel": "Seonmin MOV", "manifest": "2026-11-27-sample.yml", "result": "업로드 (unlisted)", "youtube_id": "abc123", "note": "" }
+  ]
+}
+```
+
+- `outcome`: 업로드·공개 단계의 결과(`success`/`failure`/`skipped`).
+- `error`: 검증 실패, 상한 설정 오류, 쿼터 초과처럼 실행 전체에 걸친 오류. 스크립트가 결과를 남기기 전에 죽으면 `결과 파일 없음`.
+- `items[].result`: Step Summary의 결과 열과 같은 값(업로드·이월·스킵·실패·확인 필요·공개 전환·기록만 등).
+- 토큰·이메일 같은 개인정보는 넣지 않는다. 매니페스트 이름·채널 표시 이름·youtube_id는 공개 레포에 이미 있는 값이다.
+
+### 10.2 Apps Script 웹앱 쪽 (설계만, 이 레포 범위 밖)
+
+학교 계정의 기존 프로젝트에서 따로 구현한다.
+
+1. `doPost(e)`에서 `JSON.parse(e.postData.contents)`로 페이로드를 읽는다. `source !== 'content-pipeline-yt'`이면 무시한다.
+2. 로그 시트에 `YT` 탭을 하나 두고 `items` 한 건당 한 행을 추가한다: `sent_at`, `workflow`, `dry_run`, `channel`, `manifest`, `result`, `youtube_id`, `note`, `run_url`. `items`가 비어 있으면 `error`/`outcome`을 담은 요약 한 행만 추가한다.
+3. 같은 `run_id`가 다시 오면 중복으로 보고 건너뛴다(재실행 대비, `run_id` 열로 검사).
+4. 배포: 웹앱, 실행 사용자 "나", 접근 "모든 사용자". URL을 아는 사람은 누구나 POST할 수 있으므로 쿼리에 임의의 긴 키(`?key=…`)를 붙여 `e.parameter.key`를 스크립트 속성 값과 비교하고, 키를 포함한 전체 URL을 `LOG_SHEET_WEBHOOK_URL` 시크릿에 등록한다.
+5. 응답은 `ContentService.createTextOutput('ok')`. Apps Script는 302 리다이렉트로 응답하므로 전송 쪽은 리다이렉트를 따라간다(`fetch` 기본 동작).
+

@@ -43,7 +43,9 @@ jobs:
         working-directory: scripts/yt
 
       - name: 공개 전환
+        id: publish
         env:
+          YT_RESULT_FILE: ${{ runner.temp }}/yt-result.json
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_SEONMINMOV_REFRESH_TOKEN: ${{ secrets.YT_SEONMINMOV_REFRESH_TOKEN }}
@@ -69,3 +71,12 @@ jobs:
           git commit -m 'videos: 공개 전환 기록 (published_at)'
           git pull --rebase origin main
           git push origin HEAD:main
+
+      # 로그 시트 연동(선택): LOG_SHEET_WEBHOOK_URL 시크릿이 없으면 건너뛴다. 전송 실패는 경고만
+      - name: 로그 시트 전송
+        if: ${{ always() }}
+        env:
+          LOG_SHEET_WEBHOOK_URL: ${{ secrets.LOG_SHEET_WEBHOOK_URL }}
+          YT_RESULT_FILE: ${{ runner.temp }}/yt-result.json
+          STEP_OUTCOME: ${{ steps.publish.outcome }}
+        run: node scripts/yt/log-sheet.mjs

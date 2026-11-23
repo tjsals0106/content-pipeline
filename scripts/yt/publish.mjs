@@ -7,6 +7,7 @@ import { listManifestFiles, loadManifest, validateManifests, videosDir, writeMan
 import { getMyChannel, listVideoStatuses, setPublic } from './lib/youtube.mjs';
 import { kstIsoWeek } from './lib/time.mjs';
 import { markdownTable, writeSummary } from './lib/summary.mjs';
+import { writeResult } from './lib/result.mjs';
 
 export function selectDue(manifests, currentWeek) {
   return manifests
@@ -25,6 +26,7 @@ export async function runPublish({ env = process.env, fetchImpl = fetch, now = (
   if (invalid.length) {
     for (const m of invalid) for (const e of results.get(m.name)) console.error(`${m.name}: ${e.field}: ${e.message}`);
     writeSummary(`## yt-publish\n\n매니페스트 검증 실패 ${invalid.length}건. 공개 전환하지 않음.`, env);
+    writeResult(env, { workflow: 'yt-publish', dryRun, error: `매니페스트 검증 실패 ${invalid.length}건` });
     return 1;
   }
 
@@ -117,6 +119,12 @@ export async function runPublish({ env = process.env, fetchImpl = fetch, now = (
   if (quotaError) lines.push(`- **쿼터 초과로 중단**: ${quotaError.message}`);
   lines.push('', rows.length ? markdownTable(['채널', '매니페스트', 'youtube_id', '공개 주차', '결과', '비고'], rows) : '공개 대상 없음');
   writeSummary(lines.join('\n'), env);
+  writeResult(env, {
+    workflow: 'yt-publish',
+    dryRun,
+    error: quotaError ? `쿼터 초과: ${quotaError.message}` : null,
+    items: rows.map(([channel, manifest, youtubeId, , result, note]) => ({ channel, manifest, result, youtube_id: youtubeId, note })),
+  });
   return failures > 0 || quotaError ? 1 : 0;
 }
 
