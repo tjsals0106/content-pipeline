@@ -17,7 +17,7 @@ fail() {
   exit 1
 }
 
-git add videos
+git add videos || fail '매니페스트 스테이징(git add) 실패'
 if git diff --cached --quiet; then
   echo '매니페스트 변경 없음'
   exit 0

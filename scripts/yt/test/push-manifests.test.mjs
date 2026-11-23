@@ -90,3 +90,13 @@ test('같은 매니페스트를 동시에 고쳐 rebase가 충돌하면 rebase�
   assert.equal(fs.existsSync(path.join(work, '.git', 'rebase-merge')), false);
   assert.equal(originFile(origin, 'a.yml'), 'youtube_id: X\n');
 });
+
+test('git add가 실패하면 변경 없음으로 넘기지 않고 ::error::와 함께 exit 1', () => {
+  const { work, origin } = setup();
+  fs.writeFileSync(path.join(work, '.git', 'index.lock'), '');
+  const r = run(work);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /::error::매니페스트 스테이징\(git add\) 실패/);
+  assert.doesNotMatch(r.stdout, /매니페스트 변경 없음/);
+  assert.equal(originFile(origin, 'a.yml'), 'youtube_id: null\n');
+});
