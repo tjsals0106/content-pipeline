@@ -21,7 +21,7 @@ export const EXPECTED_MAX_BYTES = 80 * MB;
 function checkDriveFile(file) {
   const warnings = [];
   const size = Number(file.size);
-  if (!(/\.mp4$/i.test(file.name ?? '') || file.mimeType === 'video/mp4')) throw new Error(`MP4가 아님 (${file.name}, ${file.mimeType})`);
+  if (!(/\.(mp4|mov)$/i.test(file.name ?? '') || ['video/mp4', 'video/quicktime'].includes(file.mimeType))) throw new Error(`MP4 또는 MOV가 아님 (${file.name}, ${file.mimeType})`);
   if (!size) throw new Error('파일 크기 0 또는 알 수 없음');
   if (size > MAX_BYTES) throw new Error(`파일이 너무 큼 (${(size / MB).toFixed(1)}MB > 512MB)`);
   if (size < EXPECTED_MIN_BYTES || size > EXPECTED_MAX_BYTES) warnings.push(`크기 ${(size / MB).toFixed(1)}MB (예상 30~80MB)`);
@@ -153,7 +153,7 @@ export async function runUpload({
             const dToken = await getDriveToken();
             const file = await resolveDriveFile(dToken, m.data.source, { folderId: env.DRIVE_VIDEO_FOLDER_ID, fetchImpl });
             const warnings = checkDriveFile(file);
-            localFile = path.join(workDir, `${m.slug}.mp4`);
+            localFile = path.join(workDir, `${m.slug}${/\.mov$/i.test(file.name ?? '') ? '.mov' : '.mp4'}`);
             await downloadDriveFile(dToken, file.id, localFile, { fetchImpl });
             const { kind, warnings: probeWarnings } = classifyVideo(probe(localFile));
             warnings.push(...probeWarnings);
