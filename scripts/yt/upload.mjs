@@ -12,6 +12,7 @@ import { buildInsertBody, getMyChannel, listRecentUploads, resumableUpload } fro
 import { classifyVideo, probeVideo } from './lib/probe.mjs';
 import { ptDate } from './lib/time.mjs';
 import { markdownTable, writeSummary } from './lib/summary.mjs';
+import { writeResult } from './lib/result.mjs';
 
 const MB = 1024 * 1024;
 export const MAX_BYTES = 512 * MB;
@@ -56,6 +57,7 @@ export async function runUpload({
   if (invalid.length) {
     for (const m of invalid) for (const e of results.get(m.name)) console.error(`${m.name}: ${e.field}: ${e.message}`);
     writeSummary(`## yt-upload\n\n매니페스트 검증 실패 ${invalid.length}건. 업로드하지 않음.`, env);
+    writeResult(env, { workflow: 'yt-upload', dryRun, error: `매니페스트 검증 실패 ${invalid.length}건` });
     return 1;
   }
 
@@ -68,6 +70,7 @@ export async function runUpload({
   } catch (e) {
     console.error(e.message);
     writeSummary(`## yt-upload\n\n${e.message}. 업로드하지 않음.`, env);
+    writeResult(env, { workflow: 'yt-upload', dryRun, error: e.message });
     return 1;
   }
   const today = ptDate(now());
@@ -200,6 +203,12 @@ export async function runUpload({
       [...rows.values()].map((r) => [r.channel, r.name, r.result, r.youtubeId, r.kind, r.note]))
     : '업로드 대상 없음 (youtube_id 없는 매니페스트 없음)');
   writeSummary(lines.join('\n'), env);
+  writeResult(env, {
+    workflow: 'yt-upload',
+    dryRun,
+    error: quotaError ? `쿼터 초과: ${quotaError.message}` : null,
+    items: [...rows.values()].map((r) => ({ channel: r.channel, manifest: r.name, result: r.result, youtube_id: r.youtubeId, note: r.note })),
+  });
 
   return failures > 0 || quotaError ? 1 : 0;
 }

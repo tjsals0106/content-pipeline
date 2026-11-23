@@ -197,3 +197,22 @@ test('resumable 업로드도 quotaExceeded는 재시도 없음', async () => {
   await assert.rejects(resumableUpload('t', { body: {}, filePath: file }, { fetchImpl, sleep: async () => {} }), { name: 'QuotaExceededError' });
   assert.equal(calls, 1);
 });
+
+test('YT_RESULT_FILE에 업로드 결과 요약을 남김', async () => {
+  const dir = tmpVideosDir({ 'a.yml': VALID });
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yt-res-')), 'r.json');
+  const { fetchImpl } = fakeGoogle();
+  await runUpload(opts({ ...baseEnv(dir), YT_RESULT_FILE: file }, fetchImpl));
+  const r = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(r.workflow, 'yt-upload');
+  assert.equal(r.items.length, 1);
+  assert.equal(r.items[0].manifest, 'a.yml');
+});
+
+test('결과 파일을 쓸 수 없어도 업로드 성공 상태(0) 유지', async () => {
+  const dir = tmpVideosDir({ 'a.yml': VALID });
+  const { fetchImpl } = fakeGoogle();
+  const code = await runUpload(opts({ ...baseEnv(dir), YT_RESULT_FILE: '/nonexistent-dir/yt/r.json' }, fetchImpl));
+  assert.equal(code, 0);
+  assert.ok(YAML.parse(fs.readFileSync(path.join(dir, 'a.yml'), 'utf8')).youtube_id);
+});
