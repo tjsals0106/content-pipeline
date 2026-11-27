@@ -1,0 +1,29 @@
+name: tumblr-validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tumblr.gs'
+      - '.github/workflows/tumblr-validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tumblr.gs'
+      - '.github/workflows/tumblr-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: 구문 검사
+        # Read from stdin because Node does not recognize the .gs extension.
+        run: node --check < tumblr.gs
