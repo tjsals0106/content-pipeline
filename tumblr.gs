@@ -15,7 +15,7 @@
 
 const TUMBLR_CONFIG = {
   BLOG: 'seonminlaura.tumblr.com',  // 404가 나면 'seonminlaura'로 바꿔본다
-  STATUS: 'draft',                  // 품질 검수 전까지 draft. 검수 후 'published'
+  STATUS: 'published',                  // 품질 검수 전까지 draft. 검수 후 'published'
   CHANNELS: ['tumblr'],             // 자동 발행 대상 채널
   TAGS: [],                         // 모든 글에 기본으로 붙일 태그. 예: ['seonmin laura']
 };
@@ -95,7 +95,7 @@ function wpCallback_(code) {
 function tumblrCallback_(code) {
   if (!code) {
     return HtmlService.createHtmlOutput(
-      '잘못된 접근입니다. tumblrAuthorize_를 실행하고 로그에 찍힌 URL을 여세요.');
+      '잘못된 접근입니다. tumblrAuthorize를 실행하고 로그에 찍힌 URL을 여세요.');
   }
   const props = PropertiesService.getScriptProperties();
   const res = UrlFetchApp.fetch(TUMBLR_TOKEN_URL, {
@@ -137,7 +137,7 @@ function tumblrSaveTokens_(data) {
 function tumblrRefresh_() {
   const props = PropertiesService.getScriptProperties();
   const refresh = props.getProperty('TUMBLR_REFRESH_TOKEN');
-  if (!refresh) throw new Error('TUMBLR_REFRESH_TOKEN 없음. tumblrAuthorize_를 다시 실행하세요.');
+  if (!refresh) throw new Error('TUMBLR_REFRESH_TOKEN 없음. tumblrAuthorize를 다시 실행하세요.');
   const res = UrlFetchApp.fetch(TUMBLR_TOKEN_URL, {
     method: 'post',
     payload: {
@@ -161,7 +161,7 @@ function tumblrRefresh_() {
 function tumblrGetToken_() {
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty('TUMBLR_ACCESS_TOKEN');
-  if (!token) throw new Error('TUMBLR_ACCESS_TOKEN 없음. tumblrAuthorize_를 실행해 인증하세요.');
+  if (!token) throw new Error('TUMBLR_ACCESS_TOKEN 없음. tumblrAuthorize를 실행해 인증하세요.');
   const expiresAt = Number(props.getProperty('TUMBLR_TOKEN_EXPIRES_AT') || 0);
   if (expiresAt && Date.now() > expiresAt) return tumblrRefresh_();
   return token;
@@ -229,19 +229,70 @@ function tumblrTestDraft() {
 // Tumblr 초안을 발행(published)으로 전환한다. postId는 tumblrTestDraft 로그의 id 또는
 // Tumblr 대시보드의 게시물 관리에서 확인할 수 있다.
 function tumblrPublishById(postId) {
-  const token = tumblrGetToken_();
-  const res = UrlFetchApp.fetch(TUMBLR_API_BASE + '/posts/' + postId, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + token },
-    payload: JSON.stringify({ state: 'published' }),
-    muteHttpExceptions: true,
-  });
+  let token = tumblrGetToken_();
+
+  // 1단계: 기존 글의 NPF 내용을 가져온다
+  let getRes = tumblrFetchPost_(token, postId);
+  if (getRes.getResponseCode() === 401) {
+    token = tumblrRefresh_();
+    getRes = tumblrFetchPost_(token, postId);
+  }
+  if (getRes.getResponseCode() >= 400) {
+    log_('ERROR', 'tumblrPublishById', 'tumblr',
+      '공개 전환 실패(내용 조회 단계): Tumblr API ' + getRes.getResponseCode() + ' ' + getRes.getContentText().slice(0, 200));
+    throw new Error('Tumblr API ' + getRes.getResponseCode() + ' (조회): ' + getRes.getContentText().slice(0, 200));
+  }
+  const post = ((JSON.parse(getRes.getContentText()) || {}).response) || {};
+  if (!post.content) {
+    throw new Error('글 내용(content)을 가져오지 못했다: ' + JSON.stringify(post).slice(0, 200));
+  }
+
+  // 2단계: 내용은 그대로 실고 state만 published로 바꿔 수정한다
+  const payload = { content: post.content, state: 'published' };
+  if (post.layout && post.layout.length) payload.layout = post.layout;
+  if (post.tags && post.tags.length) payload.tags = post.tags.join(',');
+
+  let res = tumblrEdit_(token, postId, payload);
+  if (res.getResponseCode() === 401) {
+    token = tumblrRefresh_();
+    res = tumblrEdit_(token, postId, payload);
+  }
   let data = {};
   try { data = JSON.parse(res.getContentText()); } catch (err) {}
   if (res.getResponseCode() >= 400) {
+    log_('ERROR', 'tumblrPublishById', 'tumblr',
+      '공개 전환 실패(수정 단계): Tumblr API ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 200));
     throw new Error('Tumblr API ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 200));
   }
+  const r = (data && data.response) || data;
+  log_('SUCCESS', 'tumblrPublishById', 'tumblr',
+    '공개 전환 완료: id ' + (r.id || postId) + ', 상태: ' + (r.state || 'published'));
   Logger.log('발행 완료');
-  return (data && data.response) || data;
+  return r;
+}
+
+// NPF 수정은 content를 다시 보내야 하므로 먼저 현재 내용을 조회한다.
+function tumblrFetchPost_(token, postId) {
+  return UrlFetchApp.fetch(TUMBLR_API_BASE + '/posts/' + postId + '?post_format=npf', {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + token },
+    muteHttpExceptions: true,
+  });
+}
+
+// NPF 게시물 수정: PUT + 글 전체 content 재전송. (state만 보내면 400이 난다)
+function tumblrEdit_(token, postId, payload) {
+  return UrlFetchApp.fetch(TUMBLR_API_BASE + '/posts/' + postId, {
+    method: 'put',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+}
+
+// 테스트용: 테스트 초안(id 833850061230424064)을 공개로 전환한다.
+// 그 초안을 이미 지웠다면 먼저 tumblrTestDraft를 실행하고, 로그에 찍힌 새 id를 아래에 넣어 다시 실행한다.
+function tumblrTestPublish() {
+  tumblrPublishById('833850061230424064');
 }
